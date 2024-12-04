@@ -1,3 +1,5 @@
+import _init_paths
+from data.dataset import CocoDataset
 
 
 def train():
