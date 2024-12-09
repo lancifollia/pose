@@ -1,3 +1,9 @@
+#!/usr/bin/env python3
+
+"""
+Dataset modules
+"""
+
 import orjson as json
 from torch.utils.data import Dataset
 
@@ -5,7 +11,8 @@ from torch.utils.data import Dataset
 class CocoDataset(Dataset):
     def __init__(self, anno_fname, image_dir):
         self.image_dir = image_dir
-        anno = json.loads(open(anno_fname))
+        with open(anno_fname) as _anno_fin:
+            anno = json.loads(_anno_fin)
 
         # load images
         self.images = {}
@@ -13,7 +20,7 @@ class CocoDataset(Dataset):
             v = {}
             for att in ['file_name', 'height', 'width']:
                 v[att] = _img[att]
-            images[_img['id']] = v
+            self.images[_img['id']] = v
 
         # load keypoints
         self.keypoints = {}
@@ -21,10 +28,9 @@ class CocoDataset(Dataset):
             if _anno['iscrowd'] != 0:
                 continue
             #TODO
-            pass
 
     def __len__(self):
-        pass
+        return len(self.keypoints)
 
     def __getitem__(self, idx):
         pass
