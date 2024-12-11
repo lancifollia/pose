@@ -3,22 +3,27 @@
 """
 Training script
 """
+import sys
 
+import yaml
 from loguru import logger
 
 import _init_paths
 from data.dataset import CocoDataset
 
 
-def train():
+def train(config_fname):
     # Setup configuration
-    cfg = {}
+    with open(config_fname) as config_fin:
+        cfg = yaml.load(config_fin, Loader=yaml.Loader)
 
     # Prepare dataset
-    tr_dataset = CocoDataset(cfg['anno_fname'],
-                             cfg['image_dir'])
-    val_dataset = CocoDataset(cfg['anno_fname'],
-                              cfg['image_dir'])
+    logger.info("Loading training dataset")
+    tr_dataset = CocoDataset(cfg['train_data']['anno_fname'],
+                             cfg['train_data']['image_dir'])
+    logger.info("Loading validation dataset")
+    val_dataset = CocoDataset(cfg['val_data']['anno_fname'],
+                              cfg['val_data']['image_dir'])
 
     # Prepare model parameter
 
@@ -28,4 +33,4 @@ def train():
 
 
 if __name__ == '__main__':
-    train()
+    train(sys.argv[1])
