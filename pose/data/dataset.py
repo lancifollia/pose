@@ -17,26 +17,31 @@ class CocoDataset(Dataset):
         logger.info(f"Annotation fname: {anno_fname}")
 
         # load image meta data
-        self.images = {}
+        self.image_meta = {}
         for _img in anno['images']:
             v = {}
             for att in ['file_name', 'height', 'width']:
                 v[att] = _img[att]
-            self.images[_img['id']] = v
-        logger.info(f"Num images: {len(self.images):,d}")
+            self.image_meta[_img['id']] = v
+        logger.info(f"Num images: {len(self.image_meta):,d}")
 
         # load keypoint data
-        self.keypoints = {}
+        self.keypoints = []
         for _anno in anno['annotations']:
             if _anno['iscrowd'] != 0 or _anno['category_id'] != 1:  # category_id==1: person
                 continue
-            self.keypoints[_anno['id']] = {'keypoints': _anno['keypoints'],
-                                           'image_id': _anno['image_id'],
-                                           'bbox': _anno['bbox']}
+            v = {'keypoints': _anno['keypoints'],
+                 'bbox': _anno['bbox'],
+                 'image_id': _anno['image_id'],
+                 'id': _anno['id']}
+            self.keypoints.append(v)
         logger.info(f"Num keypoint data samples: {len(self.keypoints):,d}")
 
     def __len__(self):
         return len(self.keypoints)
 
     def __getitem__(self, idx):
-        pass
+        return self.keypoints[idx]
+
+    def get_image_meta(self, image_idx):
+        return self.image_meta[image_idx]
