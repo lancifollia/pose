@@ -5,3 +5,5 @@ train_data:
 val_data:
   anno_fname: "data/coco/annotations/person_keypoints_val2017.json"
   image_dir: "data/coco/images/val2017/"
+training:
+  batch_size: 32

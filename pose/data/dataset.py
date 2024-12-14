@@ -13,6 +13,7 @@ from torchvision.io import read_image
 
 
 class CocoDataset(Dataset):
+
     def __init__(self, anno_fname, image_dir, transform=None, target_transform=None, min_keypoints=1):
         self.init_coco_info()
 
