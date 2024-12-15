@@ -99,7 +99,7 @@ class CocoDataset(Dataset):
         if self.target_transform is not None:
             annotation = self.target_transform(annotation)
 
-        return image, cropped_image, annotation
+        return cropped_image, annotation
 
     def get_connected_keypoints(self, keypoint_idx):
         ret = set()
