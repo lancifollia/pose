@@ -89,15 +89,17 @@ class CocoDataset(Dataset):
         sample = self.get_sample(idx)
         image_path = self.get_image_meta(sample['image_id'])['file_name']
 
+        x, y, w, h = sample['bbox']
         image = read_image(image_path)
+        cropped_image = image[:,y:y+h,x:x+w]
         if self.transform is not None:
-            image = self.transform(image)
+            cropped_image = self.transform(cropped_image)
 
         annotation = sample['keypoints']
         if self.target_transform is not None:
             annotation = self.target_transform(annotation)
 
-        return image, annotation
+        return image, cropped_image, annotation
 
     def get_connected_keypoints(self, keypoint_idx):
         ret = set()
