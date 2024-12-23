@@ -27,18 +27,15 @@ def train(config_fname):
         Normalize(mean=[0.485, 0.456, 0.406], # imagenet data normalization
                   std=[0.229, 0.224, 0.225])
     ])
-    target_transform = None
 
     logger.info("Preapring training dataset")
     tr_dataset = CocoDataset(cfg['train_data']['anno_fname'],
                              cfg['train_data']['image_dir'],
-                             transform=input_transform,
-                             target_transform=target_transform)
+                             transform=input_transform)
     logger.info("Loading validation dataset")
     val_dataset = CocoDataset(cfg['val_data']['anno_fname'],
                               cfg['val_data']['image_dir'],
-                              transform=input_transform,
-                              target_transform=target_transform)
+                              transform=input_transform)
 
     logger.info("Preapring dataloader")
     tr_dataloader = DataLoader(tr_dataset,

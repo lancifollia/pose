@@ -5,28 +5,45 @@ Dataset modules
 """
 import os
 
-import orjson as json
+import numpy as np
+import orjson
 import torch
 from loguru import logger
 from torch.utils.data import Dataset
 from torchvision.io import read_image
 
+import transforms
+
 
 class CocoDataset(Dataset):
 
-    def __init__(self, anno_fname, image_dir, transform=None, target_transform=None, min_keypoints=1):
+    def __init__(self,
+                 anno_fname,
+                 image_dir,
+                 transform=None,
+                 nn_input_size=[192,256],
+                 do_data_augment=False,
+                 flip_proba=0.0,
+                 rotate_factor=40,
+                 scale_factor=0.3,
+                 min_keypoints=1):
+
         self.init_coco_info()
-
-        self.transform = transform
-        self.target_transform = target_transform
-
-        self.image_dir = image_dir
         with open(anno_fname) as _anno_fin:
-            anno = json.loads(_anno_fin.read())
+            anno = orjson.loads(_anno_fin.read())
         logger.info(f"Annotation fname: {anno_fname}")
+        self.image_dir = image_dir
+        self.transform = transform
+        self.nn_input_size = nn_input_size
+        logger.info(f"NN input size: {self.nn_input_size}")
+        self.do_data_augment = do_data_augment
+        self.flip_proba = flip_proba
+        self.rotate_factor = rotate_factor
+        self.scale_factor = scale_factor
+        logger.info(f"Data augmentation: {self.do_data_augment}")
 
         # load image meta data
-        self._image_meta = {}
+        self.image_meta = {}
         for _image in anno['images']:
             v = {}
             for att in ['file_name', 'height', 'width']:
@@ -34,15 +51,15 @@ class CocoDataset(Dataset):
                     v[att] = os.path.join(self.image_dir, _image[att])
                 else:
                     v[att] = _image[att]
-            self._image_meta[_image['id']] = v
-        logger.info(f"Num images: {len(self._image_meta):,d}")
+            self.image_meta[_image['id']] = v
+        logger.info(f"Num images: {len(self.image_meta):,d}")
 
         # load keypoint data
         logger.info(f"Num raw annotations: {len(anno['annotations']):,d}")
         num_skip_crowd = 0
         num_skip_not_human = 0
         num_skip_insufficient_keypoints = 0
-        self._keypoints = []
+        self.keypoints = []
         for _anno in anno['annotations']:
             if _anno['iscrowd'] != 0:
                 num_skip_crowd += 1
@@ -60,12 +77,12 @@ class CocoDataset(Dataset):
                  'bbox': bbox,
                  'image_id': _anno['image_id'],
                  'id': _anno['id']}
-            self._keypoints.append(v)
+            self.keypoints.append(v)
         logger.info(f"skip crowd: {num_skip_crowd:,d}")
         logger.info(f"skip not human: {num_skip_not_human:,d}")
         logger.info(f"skip insufficient keypoints: {num_skip_insufficient_keypoints:,d}")
         logger.info(f"(minimum keypoints cutoff: {min_keypoints})")
-        logger.info(f"Num final keypoints annotation samples: {len(self._keypoints):,d}")
+        logger.info(f"Num final keypoints annotation samples: {len(self.keypoints):,d}")
 
     def init_coco_info(self):
         self.num_keypoints = 17
@@ -78,32 +95,54 @@ class CocoDataset(Dataset):
         logger.info(f"Keypoints idx2name: {self._keypoints_idx2name.items()}")
 
         # using 0-based skeleton index (ref. COCO dataset using 1-based index)
-        self._skeleton = [[15, 13], [13, 11], [16, 14], [14, 12], [11, 12], [5, 11],
-                          [6, 12], [5, 6], [5, 7], [6, 8], [7, 9], [8, 10], [1, 2],
-                          [0, 1], [0, 2], [1, 3], [2, 4], [3, 5], [4, 6]]
+        self.skeleton = [[15, 13], [13, 11], [16, 14], [14, 12], [11, 12], [5, 11],
+                         [6, 12], [5, 6], [5, 7], [6, 8], [7, 9], [8, 10], [1, 2],
+                         [0, 1], [0, 2], [1, 3], [2, 4], [3, 5], [4, 6]]
 
     def __len__(self):
-        return len(self._keypoints)
+        return len(self.keypoints)
 
     def __getitem__(self, idx):
         sample = self.get_sample(idx)
-        image_path = self.get_image_meta(sample['image_id'])['file_name']
-
-        x, y, w, h = sample['bbox']
+        image_meta = self.get_image_meta(sample['image_id'])
+        image_path = image_meta['file_name']
+        image_size = [image_meta['width'], image_meta['height']]
+        x, y, bw, bh = sample['bbox']
+        center = [int(x+0.5*bw), int(y+0.5*bh)]
         image = read_image(image_path)
-        cropped_image = image[:,y:y+h,x:x+w]
+        keypoints = sample['keypoints']
+
+        rotate = 0    # angle in degrees (-180 ~ 180)
+        scale = 1.25  # default scale
+        if self.do_data_augment:
+            rotate = np.clip(np.random.randn() * self.rotate_factor,
+                             self.rotate_factor * -2,
+                             self.rotate_factor * 2)
+            scale = scale * np.clip(np.random.randn() * self.scale_factor + 1,
+                                    1 - self.scale_factor,
+                                    1 + self.scale_factor)
+            if np.random.random() < self.flip_proba:
+                #TODO: horizontal flip
+                pass
+        logger.info(f"rotate, scale: {rotate}, {scale}")
+
+        image = transforms.rotate_image(image, rotate, center)
+        keypoints = transforms.rotate_keypoints(keypoints, rotate,
+                                                center, image_size)
+
+        # resizing
+        pass
+
         if self.transform is not None:
-            cropped_image = self.transform(cropped_image)
+            image = self.transform(image)
 
-        annotation = sample['keypoints']
-        if self.target_transform is not None:
-            annotation = self.target_transform(annotation)
+        #TODO: Generating SimCC x,y label.
 
-        return cropped_image, annotation
+        return image, keypoints
 
     def get_connected_keypoints(self, keypoint_idx):
         ret = set()
-        for a, b in self._skeleton:
+        for a, b in self.skeleton:
             if a == keypoint_idx:
                 ret.add(b)
             elif b == keypoint_idx:
@@ -111,10 +150,10 @@ class CocoDataset(Dataset):
         return list(ret)
 
     def get_image_meta(self, image_idx):
-        return self._image_meta[image_idx]
+        return self.image_meta[image_idx]
 
     def get_sample(self, sample_idx):
-        return self._keypoints[sample_idx]
+        return self.keypoints[sample_idx]
 
     def keypoints_idx2name(self, keypoint_idx):
         return self._keypoints_idx2name[keypoint_idx]
