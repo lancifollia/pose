@@ -21,7 +21,7 @@ class CocoDataset(Dataset):
                  anno_fname,
                  image_dir,
                  transform=None,
-                 nn_input_size=[192,256],
+                 nn_input_size=[256,192],  # height, width
                  do_data_augment=False,
                  flip_proba=0.0,
                  rotate_factor=40,
@@ -109,7 +109,7 @@ class CocoDataset(Dataset):
         image_size = [image_meta['width'], image_meta['height']]
         x, y, bw, bh = sample['bbox']
         center = [int(x+0.5*bw), int(y+0.5*bh)]
-        image = read_image(image_path)
+        image = read_image(image_path)  # (c,h,w)
         keypoints = sample['keypoints']
 
         rotate = 0    # angle in degrees (-180 ~ 180)
@@ -124,14 +124,15 @@ class CocoDataset(Dataset):
             if np.random.random() < self.flip_proba:
                 #TODO: horizontal flip
                 pass
-        logger.info(f"rotate, scale: {rotate}, {scale}")
+        logger.info(f"rotate: {rotate:.2f}, scale: {scale:.2f}")
 
         image = transforms.rotate_image(image, rotate, center)
         keypoints = transforms.rotate_keypoints(keypoints, rotate,
                                                 center, image_size)
 
-        # resizing
-        pass
+        # resizing bbox & cropping
+        image, keypoints = transforms.crop_image(image, keypoints, scale, center,
+                                                 bw, bh, self.nn_input_size)
 
         if self.transform is not None:
             image = self.transform(image)
