@@ -42,6 +42,7 @@ def rotate_keypoints(keypoints, rotate, center, image_size):
     return dst_keypoints
 
 
+
 def crop_image(image, keypoints, scale, center,
                box_width, box_height, out_image_size):
     ih, iw = image.shape[1:]  # input image shape
@@ -49,31 +50,38 @@ def crop_image(image, keypoints, scale, center,
     aspect_ratio = float(ow) / oh
 
     # Resizing bbox & cropping
-    if box_width >= box_height * aspect_ratio:
-        bw = box_width * scale
-        bh = int(float(bw) / aspect_ratio)
-    else:
-        bh = int(box_height * scale)
+    logger.info(f"center: {center}")
+    bw = int(min(box_width * scale, 2 * (iw - center[0]) , 2 * center[0]))
+    logger.info(f"bw, {box_width * scale}, {2 * (iw - center[0])}, {2 * center[0]}")
+    bh = int(min(box_height * scale, 2 * (ih - center[1]), 2 * center[1]))
+    logger.info(f"bh, {box_height * scale}, {2 * (ih - center[1])}, {2 * center[1]}")
+    if bw >= bh * aspect_ratio:
         bw = int(bh * aspect_ratio)
-    x1 = max(center[0] - math.ceil(bw * 0.5), 0)
-    x2 = min(center[0] + math.floor(bw * 0.5), iw-1)
-    y1 = max(center[1] - math.ceil(bh * 0.5), 0)
-    y2 = min(center[1] + math.floor(bh * 0.5), ih-1)
-    image = image[:,y1:y2,x1:x2]
+    else:
+        bh = int(float(bw) * aspect_ratio**-1)
+    x1 = center[0] - math.ceil(bw * 0.5)
+    y1 = center[1] - math.ceil(bh * 0.5)
+    logger.info(f"original image size: {image.shape}")
+    logger.info(f"original box size: {box_width}, {box_height}")
+    logger.info(f"x1({x1}), y1({y1}), bw({bw}), bh({bh})")
+    image = image[:, y1:y1+bh, x1:x1+bw]
+    logger.info(f"expected output size: {out_image_size}")
+    logger.info(f"cropped image size: {image.shape}")
+    logger.info(f"cropped image aspect ratio: {float(image.shape[2])/image.shape[1]}")
 
     # Resizing cropped image
     image = resize(image, size=out_image_size,
                    interpolation=InterpolationMode.BILINEAR)
 
     # Transform keypoints
-    ic = torch.tensor(center)                          # center of input
-    oc = torch.tensor([ow/2, oh/2], dtype=torch.int32) # center of output
-    M = torch.tensor([[ow/float(bw), 0], [0, oh/float(bh)]], dtype=torch.float32)
+    crop_origin = torch.tensor([x1, y1])
+    M = torch.tensor([[float(ow)/bw, 0],  # scaling linear transform
+                      [0, float(oh)/bh]], dtype=torch.float32)
     dst_keypoints = torch.zeros(keypoints.shape, dtype=torch.int32)
     for i in range(keypoints.shape[0]):
         if keypoints[i,2] == 0:   # visibility
             continue
-        dst_vec = torch.matmul(M, (keypoints[i,:2] - ic).float()).int() + oc
+        dst_vec = torch.matmul(M, (keypoints[i,:2] - crop_origin).float()).int()
         if 0 <= dst_vec[0] < ow and 0 <= dst_vec[1] < oh:
             dst_keypoints[i,:2] = dst_vec
             dst_keypoints[i,2] = keypoints[i,2]
