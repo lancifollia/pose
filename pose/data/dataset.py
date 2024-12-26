@@ -115,16 +115,16 @@ class CocoDataset(Dataset):
         rotate = 0    # angle in degrees (-180 ~ 180)
         scale = 1.25  # default scale
         if self.do_data_augment:
-            rotate = np.clip(np.random.randn() * self.rotate_factor,
-                             self.rotate_factor * -2,
-                             self.rotate_factor * 2)
+            rotate_factor = self._get_rotate_factor(image_size[0], center[0])
+            rotate = np.clip(np.random.randn() * rotate_factor,
+                             rotate_factor * -2, rotate_factor * 2)
             scale = scale * np.clip(np.random.randn() * self.scale_factor + 1,
                                     1 - self.scale_factor,
                                     1 + self.scale_factor)
             if np.random.random() < self.flip_proba:
                 #TODO: horizontal flip
                 pass
-        logger.info(f"rotate: {rotate:.2f}, scale: {scale:.2f}")
+        logger.debug(f"rotate: {rotate:.2f}, scale: {scale:.2f}")
 
         image = transforms.rotate_image(image, rotate, center)
         keypoints = transforms.rotate_keypoints(keypoints, rotate,
@@ -140,6 +140,19 @@ class CocoDataset(Dataset):
         #TODO: Generating SimCC x,y label.
 
         return image, keypoints
+
+    def _get_rotate_factor(self, image_width, center_x):
+        """
+        Retrict rotating factor when side margin is small.
+        """
+        side_margin = min(center_x, image_width-center_x)
+        ratio = float(side_margin) / image_width
+        if ratio < 0.1:
+            return 5
+        elif ratio < 0.2:
+            return 10
+        else:
+            return self.rotate_factor
 
     def get_connected_keypoints(self, keypoint_idx):
         ret = set()
