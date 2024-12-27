@@ -4,6 +4,7 @@
 Dataset modules
 """
 import copy
+import math
 import os
 
 import numpy as np
@@ -29,7 +30,7 @@ class CocoDataset(Dataset):
                  scale_factor=0.3,
                  min_keypoints=1):
 
-        self.init_coco_info()
+        self._init_coco_info()
         with open(anno_fname) as _anno_fin:
             anno = orjson.loads(_anno_fin.read())
         logger.info(f"Annotation fname: {anno_fname}")
@@ -42,9 +43,13 @@ class CocoDataset(Dataset):
         self.rotate_factor = rotate_factor
         self.scale_factor = scale_factor
         logger.info(f"Data augmentation: {self.do_data_augment}")
+        # self.half_body_proba = 0.3
+        self.half_body_proba = 1.0
+        self.half_body_min_kps = 8
+        logger.info(f"Half body proba: {self.half_body_proba}, min #kp: {self.half_body_min_kps}")
 
         # load image meta data
-        self.image_meta = {}
+        self._image_meta = {}
         for _image in anno['images']:
             v = {}
             for att in ['file_name', 'height', 'width']:
@@ -52,15 +57,15 @@ class CocoDataset(Dataset):
                     v[att] = os.path.join(self.image_dir, _image[att])
                 else:
                     v[att] = _image[att]
-            self.image_meta[_image['id']] = v
-        logger.info(f"Num images: {len(self.image_meta):,d}")
+            self._image_meta[_image['id']] = v
+        logger.info(f"Num images: {len(self._image_meta):,d}")
 
         # load keypoint data
         logger.info(f"Num raw annotations: {len(anno['annotations']):,d}")
         num_skip_crowd = 0
         num_skip_not_human = 0
         num_skip_insufficient_keypoints = 0
-        self.keypoints = []
+        self._keypoints = []
         for _anno in anno['annotations']:
             if _anno['iscrowd'] != 0:
                 num_skip_crowd += 1
@@ -78,21 +83,21 @@ class CocoDataset(Dataset):
                  'bbox': bbox,
                  'image_id': _anno['image_id'],
                  'id': _anno['id']}
-            self.keypoints.append(v)
+            self._keypoints.append(v)
         logger.info(f"skip crowd: {num_skip_crowd:,d}")
         logger.info(f"skip not human: {num_skip_not_human:,d}")
         logger.info(f"skip insufficient keypoints: {num_skip_insufficient_keypoints:,d}")
         logger.info(f"(minimum keypoints cutoff: {min_keypoints})")
-        logger.info(f"Num final keypoints annotation samples: {len(self.keypoints):,d}")
+        logger.info(f"Num final keypoints annotation samples: {len(self._keypoints):,d}")
 
-    def init_coco_info(self):
+    def _init_coco_info(self):
         self.num_keypoints = 17
 
-        keypoints = ['nose', 'L-eye', 'R-eye', 'L-ear', 'R-ear',
+        kp_labels = ['nose', 'L-eye', 'R-eye', 'L-ear', 'R-ear',
                      'L-shder', 'R-shder', 'L-elb', 'R-elb',
                      'L-wrst', 'R-wrst', 'L-hip', 'R-hip',
-                     'L-knee', 'R-knee', 'L-ankl', 'R-ankle']
-        self._keypoints_idx2name = {idx: name for idx, name in enumerate(keypoints)}
+                     'L-knee', 'R-knee', 'L-ankl', 'R-ankl']
+        self._keypoints_idx2name = {idx: name for idx, name in enumerate(kp_labels)}
         logger.info(f"Keypoints idx2name: {self._keypoints_idx2name.items()}")
 
         # using 0-based skeleton index (ref. COCO dataset using 1-based index)
@@ -101,7 +106,7 @@ class CocoDataset(Dataset):
                          [0, 1], [0, 2], [1, 3], [2, 4], [3, 5], [4, 6]]
 
     def __len__(self):
-        return len(self.keypoints)
+        return len(self._keypoints)
 
     def __getitem__(self, idx):
         sample = self.get_sample(idx)
@@ -116,12 +121,11 @@ class CocoDataset(Dataset):
         rotate = 0    # angle in degrees (-180 ~ 180)
         scale = 1.25  # default scale
         if self.do_data_augment:
-            rotate_factor = self._get_rotate_factor(image_size[0], center[0])
-            rotate = np.clip(np.random.randn() * rotate_factor,
-                             rotate_factor * -2, rotate_factor * 2)
-            scale = scale * np.clip(np.random.randn() * self.scale_factor + 1,
-                                    1 - self.scale_factor,
-                                    1 + self.scale_factor)
+            if np.random.random() < self.half_body_proba \
+               and sum(keypoints[:,2] > 0) > self.half_body_min_kps:
+                keypoints, bbox, center = self._half_body_transform(keypoints, image_size)
+                x, y, bw, bh = bbox
+                logger.debug("the image is half-body transformed.")
             if np.random.random() < self.flip_proba:
                 image = image.flip(2)
                 center[0] = image_size[0] - center[0]
@@ -129,7 +133,12 @@ class CocoDataset(Dataset):
                     if keypoints[i,2] == 0:   # visibility
                         continue
                     keypoints[i,0] = image_size[0] - keypoints[i,0]
-                logger.debug("the image is horizontally flipped")
+                logger.debug("the image is horizontally flipped.")
+            rotate_factor = self._get_rotate_factor(image_size[0], center[0])
+            rotate = np.clip(np.random.randn() * rotate_factor,
+                             rotate_factor * -2, rotate_factor * 2)
+            scale = scale * np.clip(np.random.randn() * self.scale_factor + 1,
+                                    1 - self.scale_factor, 1 + self.scale_factor)
         logger.debug(f"rotate: {rotate:.2f}, scale: {scale:.2f}")
 
         image = transforms.rotate_image(image, rotate, center)
@@ -160,6 +169,57 @@ class CocoDataset(Dataset):
         else:
             return self.rotate_factor
 
+    def _half_body_transform(self, keypoints, image_size):
+        num_upperbody_kps = sum(keypoints[:13,2] > 0) # 13: L-knee
+        num_lowerbody_kps = sum(keypoints[11:,2] > 0) # 11: L-hip
+        min_kps = 2
+
+        if num_upperbody_kps < min_kps:
+            do_upperbody_transf = False
+        elif num_lowerbody_kps < min_kps:
+            do_upperbody_transf = True
+        else:
+            if np.random.randn() < 0.5:
+                do_upperbody_transf = True
+            else:
+                do_upperbody_transf = False
+
+        transf_part = "upper" if do_upperbody_transf else "lower"
+        logger.debug(f"half body transform part: {transf_part}")
+
+        dst_keypoints = torch.zeros(keypoints.shape, dtype=torch.int32)
+        for i in range(keypoints.shape[0]):
+            if do_upperbody_transf is True and i >= 13:
+                continue
+            if do_upperbody_transf is False and i < 11:
+                continue
+            if keypoints[i,2] == 0:   # visibility
+                continue
+            dst_keypoints[i] = keypoints[i]
+
+        iw, ih = image_size
+        valid_keypoints = dst_keypoints[dst_keypoints[:,2] > 0]
+        bw = max(valid_keypoints[:,0]) - min(valid_keypoints[:,0])
+        bh = max(valid_keypoints[:,1]) - min(valid_keypoints[:,1])
+        center_x = min(valid_keypoints[:,0]) + math.ceil(bw * 0.5)
+        center_y = min(valid_keypoints[:,1]) + math.ceil(bh * 0.5)
+
+        scale_factor = 1.5
+        bw = bw * scale_factor
+        half_bw = min(bw * 0.5, center_x, iw - center_x)
+        bh = bh * scale_factor
+        half_bh = min(bh * 0.5, center_y, ih - center_y)
+        bw = math.ceil(half_bw * 2)
+        bh = math.ceil(half_bh * 2)
+
+        x1 = math.ceil(center_x - half_bw)
+        y1 = math.ceil(center_y - half_bh)
+
+        bbox = [x1, y1, bw, bh]
+        center = [center_x, center_y]
+
+        return dst_keypoints, bbox, center
+
     def get_connected_keypoints(self, keypoint_idx):
         ret = set()
         for a, b in self.skeleton:
@@ -170,10 +230,10 @@ class CocoDataset(Dataset):
         return list(ret)
 
     def get_image_meta(self, image_idx):
-        return copy.deepcopy(self.image_meta[image_idx])
+        return copy.deepcopy(self._image_meta[image_idx])
 
     def get_sample(self, sample_idx):
-        return copy.deepcopy(self.keypoints[sample_idx])
+        return copy.deepcopy(self._keypoints[sample_idx])
 
     def keypoints_idx2name(self, keypoint_idx):
         return self._keypoints_idx2name[keypoint_idx]

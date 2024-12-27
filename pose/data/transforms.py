@@ -7,9 +7,7 @@ from torchvision.transforms.v2.functional import affine, resize
 from torchvision.transforms.v2 import InterpolationMode
 
 
-
 class RescaleImgDiv255(object):
-
     def __call__(self, pic):
         if type(pic) not in [torch.tensor, torch.Tensor]:
             raise ValueError("Only torch.tensor type is supported.")
