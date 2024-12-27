@@ -3,6 +3,7 @@
 """
 Dataset modules
 """
+import copy
 import os
 
 import numpy as np
@@ -23,7 +24,7 @@ class CocoDataset(Dataset):
                  transform=None,
                  nn_input_size=[256,192],  # height, width
                  do_data_augment=False,
-                 flip_proba=0.0,
+                 flip_proba=0.5,
                  rotate_factor=40,
                  scale_factor=0.3,
                  min_keypoints=1):
@@ -122,8 +123,13 @@ class CocoDataset(Dataset):
                                     1 - self.scale_factor,
                                     1 + self.scale_factor)
             if np.random.random() < self.flip_proba:
-                #TODO: horizontal flip
-                pass
+                image = image.flip(2)
+                center[0] = image_size[0] - center[0]
+                for i in range(keypoints.shape[0]):
+                    if keypoints[i,2] == 0:   # visibility
+                        continue
+                    keypoints[i,0] = image_size[0] - keypoints[i,0]
+                logger.debug("the image is horizontally flipped")
         logger.debug(f"rotate: {rotate:.2f}, scale: {scale:.2f}")
 
         image = transforms.rotate_image(image, rotate, center)
@@ -164,10 +170,10 @@ class CocoDataset(Dataset):
         return list(ret)
 
     def get_image_meta(self, image_idx):
-        return self.image_meta[image_idx]
+        return copy.deepcopy(self.image_meta[image_idx])
 
     def get_sample(self, sample_idx):
-        return self.keypoints[sample_idx]
+        return copy.deepcopy(self.keypoints[sample_idx])
 
     def keypoints_idx2name(self, keypoint_idx):
         return self._keypoints_idx2name[keypoint_idx]
