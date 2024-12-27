@@ -6,47 +6,52 @@ Dataset modules
 import copy
 import math
 import os
+import sys
 
 import numpy as np
 import orjson
 import torch
+import torchvision
 from loguru import logger
 from torch.utils.data import Dataset
-from torchvision.io import read_image
 
+sys.path.insert(0, os.path.dirname(__file__))
 import transforms
 
 
 class CocoDataset(Dataset):
-
     def __init__(self,
                  anno_fname,
                  image_dir,
-                 transform=None,
-                 nn_input_size=[256,192],  # height, width
-                 do_data_augment=False,
-                 flip_proba=0.5,
-                 rotate_factor=40,
-                 scale_factor=0.3,
-                 min_keypoints=1):
+                 nn_input_size,
+                 data_aug_cfg,
+                 min_keypoints=1,
+                 transform=None):
 
         self._init_coco_info()
         with open(anno_fname) as _anno_fin:
             anno = orjson.loads(_anno_fin.read())
         logger.info(f"Annotation fname: {anno_fname}")
         self.image_dir = image_dir
-        self.transform = transform
         self.nn_input_size = nn_input_size
         logger.info(f"NN input size: {self.nn_input_size}")
-        self.do_data_augment = do_data_augment
-        self.flip_proba = flip_proba
-        self.rotate_factor = rotate_factor
-        self.scale_factor = scale_factor
+        self.transform = transform
+
+        if data_aug_cfg is None:
+            self.do_data_augment = False
+            self.flip_proba = 0.0
+            self.rotate_factor = 0
+            self.scale_factor = 0.0
+            self.half_body_proba = 0.0
+            self.half_body_min_kps = 100
+        else:
+            self.do_data_augment = True
+            self.flip_proba = data_aug_cfg.FLIP_PROBA
+            self.rotate_factor = data_aug_cfg.ROTATE_FACTOR
+            self.scale_factor = data_aug_cfg.SCALE_FACTOR
+            self.half_body_proba = data_aug_cfg.HALF_BODY_PROBA
+            self.half_body_min_kps = data_aug_cfg.HALF_BODY_MIN_KEYPOINTS
         logger.info(f"Data augmentation: {self.do_data_augment}")
-        # self.half_body_proba = 0.3
-        self.half_body_proba = 1.0
-        self.half_body_min_kps = 8
-        logger.info(f"Half body proba: {self.half_body_proba}, min #kp: {self.half_body_min_kps}")
 
         # load image meta data
         self._image_meta = {}
@@ -115,7 +120,7 @@ class CocoDataset(Dataset):
         image_size = [image_meta['width'], image_meta['height']]
         x, y, bw, bh = sample['bbox']
         center = [int(x+0.5*bw), int(y+0.5*bh)]
-        image = read_image(image_path)  # (c,h,w)
+        image = self._read_image(image_path)  # (c,h,w)
         keypoints = sample['keypoints']
 
         rotate = 0    # angle in degrees (-180 ~ 180)
@@ -157,9 +162,7 @@ class CocoDataset(Dataset):
         return image, keypoints
 
     def _get_rotate_factor(self, image_width, center_x):
-        """
-        Retrict rotating factor when side margin is small.
-        """
+        """Retrict rotating factor when side margin is small."""
         side_margin = min(center_x, image_width-center_x)
         ratio = float(side_margin) / image_width
         if ratio < 0.1:
@@ -219,6 +222,20 @@ class CocoDataset(Dataset):
         center = [center_x, center_y]
 
         return dst_keypoints, bbox, center
+
+    def _read_image(self, image_path):
+        """
+        torchvision.io.read_image() wrapper function
+        to guarantee number of color channels to 3.
+        """
+        image = torchvision.io.read_image(image_path)
+        if image.shape[0] == 3:
+            return image
+        elif image.shape[0] == 1:
+            # https://discuss.pytorch.org/t/grayscale-to-rgb-transform/18315/2
+            return image.repeat(3, 1, 1)
+        else:
+            raise ValueError("Invalid #color channel(={image.shape[0]}): {image_path}")
 
     def get_connected_keypoints(self, keypoint_idx):
         ret = set()
