@@ -8,6 +8,8 @@ import copy
 import math
 import os
 import sys
+from collections.abc import Callable
+from typing import Optional, NamedTuple
 
 import numpy as np
 import orjson
@@ -15,19 +17,41 @@ import torch
 import torchvision
 from loguru import logger
 from torch.utils.data import Dataset
+from yacs.config import CfgNode
 
 sys.path.insert(0, os.path.dirname(__file__))
 import transforms
 
 
+class ImageMeta(NamedTuple):
+    fpath: str
+    w: int
+    h: int
+
+
+class BBox(NamedTuple):
+    x: int  # left upper x coordinate
+    y: int  # left upper y coordinate
+    w: int  # widht
+    h: int  # height
+
+
+class DataSample(NamedTuple):
+    keypoints: torch.Tensor
+    bbox: BBox
+    image_id: int
+    id: int
+
+
 class CocoDataset(Dataset):
     def __init__(self,
-                 anno_fname,
-                 image_dir,
-                 nn_input_size,
-                 data_aug_cfg,
-                 min_keypoints=1,
-                 transform=None):
+                 anno_fname: str,
+                 image_dir: str,
+                 nn_input_size: int,
+                 data_aug_cfg: CfgNode,
+                 min_keypoints: int = 1,
+                 transform: Optional[Callable[[torch.Tensor], torch.Tensor]] = None
+                 ) -> None:
 
         self._init_coco_info()
         with open(anno_fname) as _anno_fin:
@@ -57,13 +81,9 @@ class CocoDataset(Dataset):
         # load image meta data
         self._image_meta = {}
         for _image in anno['images']:
-            v = {}
-            for att in ['file_name', 'height', 'width']:
-                if att == 'file_name':
-                    v[att] = os.path.join(self.image_dir, _image[att])
-                else:
-                    v[att] = _image[att]
-            self._image_meta[_image['id']] = v
+            m = ImageMeta(fpath=os.path.join(self.image_dir, _image['file_name']),
+                          w=_image['width'], h=_image['height'])
+            self._image_meta[_image['id']] = m
         logger.info(f"Num images: {len(self._image_meta):,d}")
 
         # load keypoint data
@@ -71,7 +91,7 @@ class CocoDataset(Dataset):
         num_skip_crowd = 0
         num_skip_not_human = 0
         num_skip_insufficient_keypoints = 0
-        self._keypoints = []
+        self._dataset = list[DataSample]()
         for _anno in anno['annotations']:
             if _anno['iscrowd'] != 0:
                 num_skip_crowd += 1
@@ -84,19 +104,16 @@ class CocoDataset(Dataset):
             if torch.sum(kp[:,2] > 0) < min_keypoints:
                 num_skip_insufficient_keypoints += 1
                 continue
-            bbox = [round(_x) for _x in _anno['bbox']]  # [leftupper_x, leftupper_y, width, height]
-            v = {'keypoints': kp,
-                 'bbox': bbox,
-                 'image_id': _anno['image_id'],
-                 'id': _anno['id']}
-            self._keypoints.append(v)
+            bbox = BBox(*[math.floor(_x) for _x in _anno['bbox']])
+            self._dataset.append(DataSample(keypoints=kp, bbox=bbox,
+                                            image_id=_anno['image_id'], id=_anno['id']))
         logger.info(f"skip crowd: {num_skip_crowd:,d}")
         logger.info(f"skip not human: {num_skip_not_human:,d}")
         logger.info(f"skip insufficient keypoints: {num_skip_insufficient_keypoints:,d}")
         logger.info(f"(minimum keypoints cutoff: {min_keypoints})")
-        logger.info(f"Num final keypoints annotation samples: {len(self._keypoints):,d}")
+        logger.info(f"Num final dataset(keypoints annotation) size: {len(self._dataset):,d}")
 
-    def _init_coco_info(self):
+    def _init_coco_info(self) -> None:
         self.num_keypoints = 17
 
         kp_labels = ['nose', 'L-eye', 'R-eye', 'L-ear', 'R-ear',
@@ -111,18 +128,18 @@ class CocoDataset(Dataset):
                          [6, 12], [5, 6], [5, 7], [6, 8], [7, 9], [8, 10], [1, 2],
                          [0, 1], [0, 2], [1, 3], [2, 4], [3, 5], [4, 6]]
 
-    def __len__(self):
-        return len(self._keypoints)
+    def __len__(self) -> int:
+        return len(self._dataset)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int):
         sample = self.get_sample(idx)
-        image_meta = self.get_image_meta(sample['image_id'])
-        image_path = image_meta['file_name']
-        image_size = [image_meta['width'], image_meta['height']]
-        x, y, bw, bh = sample['bbox']
+        image_meta = self.get_image_meta(sample.image_id)
+        image_path = image_meta.fpath
+        image_size = [image_meta.w, image_meta.h]
+        x, y, bw, bh = sample.bbox
         center = [int(x+0.5*bw), int(y+0.5*bh)]
         image = self._read_image(image_path)  # (c,h,w)
-        keypoints = sample['keypoints']
+        keypoints = sample.keypoints
 
         rotate = 0    # angle in degrees (-180 ~ 180)
         scale = 1.25  # default scale
@@ -251,7 +268,17 @@ class CocoDataset(Dataset):
         return copy.deepcopy(self._image_meta[image_idx])
 
     def get_sample(self, sample_idx):
-        return copy.deepcopy(self._keypoints[sample_idx])
+        return copy.deepcopy(self._dataset[sample_idx])
 
     def keypoints_idx2name(self, keypoint_idx):
         return self._keypoints_idx2name[keypoint_idx]
+
+
+if __name__ == "__main__":
+    # for testing
+    # bb = BBox(x=1, y=2, w=10, h=20)
+    bb = BBox(*[1,2,10,20])
+    print(bb)
+    print(type(bb))
+    x, y, w, h = bb
+    print(x, y, w, h)

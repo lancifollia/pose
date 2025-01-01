@@ -36,7 +36,7 @@ def train(config_fname):
                              data_aug_cfg=cfg.DATA_TRAIN.DATA_AUG,
                              min_keypoints=cfg.DATA_COMMON.MIN_KEYPOINTS,
                              transform=input_transform)
-    logger.info("Loading validation dataset"  )
+    logger.info("Loading validation dataset")
     val_dataset = CocoDataset(anno_fname=cfg.DATA_VAL.ANNOTATION_FNAME,
                               image_dir=cfg.DATA_VAL.IMAGE_DIR,
                               nn_input_size=cfg.NN.INPUT_SIZE,
