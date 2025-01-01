@@ -1,9 +1,5 @@
 ---
-train_data:
-  anno_fname: "data/coco/annotations/person_keypoints_train2017.json"
-  image_dir: "data/coco/images/train2017/"
-val_data:
-  anno_fname: "data/coco/annotations/person_keypoints_val2017.json"
-  image_dir: "data/coco/images/val2017/"
-training:
-  batch_size: 32
+TRAINING:
+  BATCH_SIZE: 32
+VALIDATION:
+  BATCH_SIZE: 32

@@ -6,21 +6,22 @@ Training script
 import sys
 from os import path
 
-import yaml
 from loguru import logger
 from torch.utils.data import DataLoader
 from torchvision.transforms import Compose, Normalize
 
 sys.path.insert(0, path.join(path.dirname(__file__), '..', 'pose'))
 
+from config import get_cfg_defaults
 from data.dataset import CocoDataset
 from data.transforms import RescaleImgDiv255
 
 
 def train(config_fname):
-    with open(config_fname, encoding="utf-8") as config_fin:
-        cfg = yaml.load(config_fin, Loader=yaml.Loader)
-    logger.info(f"Config dump: {cfg}")
+    cfg = get_cfg_defaults()
+    cfg.merge_from_file(config_fname)
+    cfg.freeze()
+    logger.info(cfg)
 
     input_transform = Compose([
         RescaleImgDiv255(),
@@ -29,20 +30,26 @@ def train(config_fname):
     ])
 
     logger.info("Preapring training dataset")
-    tr_dataset = CocoDataset(cfg['train_data']['anno_fname'],
-                             cfg['train_data']['image_dir'],
+    tr_dataset = CocoDataset(anno_fname=cfg.DATA_TRAIN.ANNOTATION_FNAME,
+                             image_dir=cfg.DATA_TRAIN.IMAGE_DIR,
+                             nn_input_size=cfg.NN.INPUT_SIZE,
+                             data_aug_cfg=cfg.DATA_TRAIN.DATA_AUG,
+                             min_keypoints=cfg.DATA_COMMON.MIN_KEYPOINTS,
                              transform=input_transform)
-    logger.info("Loading validation dataset")
-    val_dataset = CocoDataset(cfg['val_data']['anno_fname'],
-                              cfg['val_data']['image_dir'],
+    logger.info("Loading validation dataset"  )
+    val_dataset = CocoDataset(anno_fname=cfg.DATA_VAL.ANNOTATION_FNAME,
+                              image_dir=cfg.DATA_VAL.IMAGE_DIR,
+                              nn_input_size=cfg.NN.INPUT_SIZE,
+                              data_aug_cfg=cfg.DATA_VAL.DATA_AUG,
+                              min_keypoints=cfg.DATA_COMMON.MIN_KEYPOINTS,
                               transform=input_transform)
 
     logger.info("Preapring dataloader")
     tr_dataloader = DataLoader(tr_dataset,
-                               batch_size=cfg['training']['batch_size'],
+                               batch_size=cfg.TRAINING.BATCH_SIZE,
                                shuffle=True)
     val_dataloader = DataLoader(val_dataset,
-                                batch_size=cfg['training']['batch_size'],
+                                batch_size=cfg.VALIDATION.BATCH_SIZE,
                                 shuffle=True)
 
     # Prepare model parameter

@@ -7,15 +7,19 @@ _C = CN()
 # CfgNodes should be alphabetical ordered.
 
 
+"""Data Common"""
+_C.DATA_COMMON = CN()
+# Minimum required keypoints for training sample.
+_C.DATA_COMMON.MIN_KEYPOINTS = 1
+
+
 """Training Data"""
 _C.DATA_TRAIN = CN()
 _C.DATA_TRAIN.ANNOTATION_FNAME = "/home/dev/data/coco/annotations/person_keypoints_train2017.json"
 _C.DATA_TRAIN.IMAGE_DIR = "/home/dev/data/coco/images/train2017/"
-# Minimum required keypoints for training sample.
-_C.DATA_TRAIN.MIN_KEYPOINTS = 1
 
 
-"""Data augmentation"""
+"""Training Data >> Data augmentation"""
 _C.DATA_TRAIN.DATA_AUG = CN()
 # Horizontal flipping trigering probability
 _C.DATA_TRAIN.DATA_AUG.FLIP_PROBA = 0.5
@@ -29,10 +33,28 @@ _C.DATA_TRAIN.DATA_AUG.HALF_BODY_PROBA = 0.3
 _C.DATA_TRAIN.DATA_AUG.HALF_BODY_MIN_KEYPOINTS = 8
 
 
-"""Neural network settings"""
+"""Validation Data"""
+_C.DATA_VAL = CN()
+_C.DATA_VAL.ANNOTATION_FNAME = "/home/dev/data/coco/annotations/person_keypoints_val2017.json"
+_C.DATA_VAL.IMAGE_DIR = "/home/dev/data/coco/images/val2017/"
+_C.DATA_VAL.DATA_AUG = None
+
+
+"""Neural Networks"""
 _C.NN = CN()
 # Neural network input image size. [height, width]
 _C.NN.INPUT_SIZE = [256, 192]
+
+
+"""Model training"""
+_C.TRAINING = CN()
+_C.TRAINING.BATCH_SIZE = 120
+_C.TRAINING.NUM_GPU = 1
+
+
+"""Model validation"""
+_C.VALIDATION = CN()
+_C.VALIDATION.BATCH_SIZE = 120
 
 
 def get_cfg_defaults():
