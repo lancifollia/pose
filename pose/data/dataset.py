@@ -3,14 +3,13 @@
 """
 Dataset modules
 """
-from __future__ import annotations
 
 import copy
 import math
 import os
 import sys
 from collections.abc import Callable
-from typing import Optional, NamedTuple, Self
+from typing import Optional, NamedTuple
 
 import numpy as np
 import orjson
@@ -22,54 +21,13 @@ from yacs.config import CfgNode
 
 sys.path.insert(0, os.path.dirname(__file__))
 import transforms
+from datatype import BBox, KeyPoints
 
 
 class ImageMeta(NamedTuple):
     fpath: str  # image file path
     w: int      # width of the image
     h: int      # height of the image
-
-
-class BBox(NamedTuple):
-    x: int  # left upper x coordinate
-    y: int  # left upper y coordinate
-    w: int  # widht of the bounding box
-    h: int  # height of the bounding box
-
-
-class KeyPoints(object):
-    num_kp = 17         # COCO dataset
-    upperbody_idx = 13  # 13: L-knee
-    lowerbody_idx = 11  # 11: L-hip
-
-    def __init__(self, anno: list[float]) -> None:
-        # COCO dataset keypoints annotation format: a list of length 51(=17x3)
-        # 17x3: 17 for 17 keypoints, 3 for (x, y, v(isibility))
-        # v=0: not labeled, v=1: labeled but not visible, and v=2: labeled and visible.
-        kp = torch.tensor(anno, dtype=torch.int32).reshape(self.num_kp,3)
-        self._kp = kp[:,:2]
-        self._vis = kp[:,2]
-        self._vis_level = 0  # default visibility level
-
-    def is_ith_kp_visible(self, idx: int) -> bool:
-        return bool(self._vis[idx] > self._vis_level)
-
-    def num_visible(self) -> int:
-        return int(torch.sum(self._vis > self._vis_level))
-
-    def num_upperbody_visible(self) -> int:
-        return int(torch.sum(self._vis[:self.upperbody_idx] > self._vis_level))
-
-    def num_lowerbody_visible(self) -> int:
-        return int(torch.sum(self._vis[self.lowerbody_idx:] > self._vis_level))
-
-    def hflip(self, image_width) -> KeyPoints:
-        ret = copy.deepcopy(self)
-        for i in range(self.num_kp):
-            if ret.is_ith_kp_visible(i) is False:
-                continue
-            ret._kp[i][0] = image_width - self._kp[i,0]
-        return ret
 
 
 class DataSample(NamedTuple):
@@ -198,12 +156,12 @@ class CocoDataset(Dataset):
         logger.debug(f"rotate: {rotate:.2f}, scale: {scale:.2f}")
 
         image = transforms.rotate_image(image, rotate, center)
-        keypoints = transforms.rotate_keypoints(keypoints, rotate,
-                                                center, image_size)
+        keypoints = keypoints.rotate(rotate, center, image_size)
 
         # resizing bbox & cropping
-        image, keypoints = transforms.crop_image(image, keypoints, scale, center,
-                                                 bw, bh, self.nn_input_size)
+        image, bbox = transforms.crop_and_resize_image(image, scale, center,
+                                                       bw, bh, self.nn_input_size)
+        keypoints = keypoints.stretch(bbox, self.nn_input_size)
 
         if self.transform is not None:
             image = self.transform(image)
@@ -241,23 +199,13 @@ class CocoDataset(Dataset):
         transf_part = "upper" if do_upperbody_transf else "lower"
         logger.debug(f"half body transform part: {transf_part}")
 
-        # TODO
-        dst_keypoints = torch.zeros(keypoints.shape, dtype=torch.int32)
-        for i in range(keypoints.shape[0]):
-            if do_upperbody_transf is True and i >= 13:
-                continue
-            if do_upperbody_transf is False and i < 11:
-                continue
-            if keypoints[i,2] == 0:   # visibility
-                continue
-            dst_keypoints[i] = keypoints[i]
+        if do_upperbody_transf is True:
+            dst_keypoints = keypoints.remove_lowerbody_kps()
+        else:
+            dst_keypoints = keypoints.remove_upperbody_kps()
 
         iw, ih = image_size
-        valid_keypoints = dst_keypoints[dst_keypoints[:,2] > 0]
-        bw = max(valid_keypoints[:,0]) - min(valid_keypoints[:,0])
-        bh = max(valid_keypoints[:,1]) - min(valid_keypoints[:,1])
-        center_x = min(valid_keypoints[:,0]) + math.ceil(bw * 0.5)
-        center_y = min(valid_keypoints[:,1]) + math.ceil(bh * 0.5)
+        bw, bh, center_x, center_y = dst_keypoints.get_bbox_size_and_center()
 
         scale_factor = 1.5
         bw = bw * scale_factor

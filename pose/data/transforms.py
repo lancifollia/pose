@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 import math
+import os
+import sys
 
 import torch
 from loguru import logger
 from torchvision.transforms.v2.functional import affine, resize
 from torchvision.transforms.v2 import InterpolationMode
+
+sys.path.insert(0, os.path.dirname(__file__))
+from datatype import BBox
 
 
 class RescaleImgDiv255(object):
@@ -21,27 +26,8 @@ def rotate_image(image, rotate, center):
                   interpolation=InterpolationMode.BILINEAR, center=center)
 
 
-def rotate_keypoints(keypoints, rotate, center, image_size):
-    theta = math.pi * rotate / 180  # angle in degrees -> radian
-    M = torch.tensor([[math.cos(theta), -1 * math.sin(theta)],
-                      [math.sin(theta), math.cos(theta)]])
-    c = torch.tensor(center)
-    dst_keypoints = torch.zeros(keypoints.shape, dtype=torch.int32)
-    for i in range(keypoints.shape[0]):
-        if keypoints[i,2] == 0:   # visibility
-            continue
-        dst_vec = torch.matmul(M, (keypoints[i,:2] - c).float()).int() + c
-        if 0 <= dst_vec[0] < image_size[0] and 0 <= dst_vec[1] < image_size[1]:
-            dst_keypoints[i,:2] = dst_vec
-            dst_keypoints[i,2] = keypoints[i,2]
-        else:
-            # keypoints outside of the image size
-            dst_keypoints[i] = torch.tensor([0, 0, 0])
-    return dst_keypoints
-
-
-def crop_image(image, keypoints, scale, center,
-               box_width, box_height, out_image_size):
+def crop_and_resize_image(image, scale, center,
+                          box_width, box_height, out_image_size):
     ih, iw = image.shape[1:]  # input image shape
     oh, ow = out_image_size
     aspect_ratio = float(ow) / oh
@@ -64,7 +50,8 @@ def crop_image(image, keypoints, scale, center,
                  center[1] - math.ceil(box_height * 0.5)), 0)
     logger.debug(f"original image size: {image.shape}")
     logger.debug(f"original box size: {box_width}, {box_height}")
-    logger.debug(f"x1({x1}), y1({y1}), bw({bw}), bh({bh})")
+    new_bbox = BBox(x1, y1, bw, bh)
+    logger.debug(f"new bbox: {new_bbox}")
 
     image = image[:, y1:y1+bh, x1:x1+bw]
     logger.debug(f"expected output size: {out_image_size}")
@@ -78,20 +65,4 @@ def crop_image(image, keypoints, scale, center,
     image = resize(image, size=out_image_size,
                    interpolation=InterpolationMode.BILINEAR)
 
-    # Transform keypoints
-    crop_origin = torch.tensor([x1, y1])
-    M = torch.tensor([[float(ow)/bw, 0],  # scaling linear transform
-                      [0, float(oh)/bh]], dtype=torch.float32)
-    dst_keypoints = torch.zeros(keypoints.shape, dtype=torch.int32)
-    for i in range(keypoints.shape[0]):
-        if keypoints[i,2] == 0:   # visibility
-            continue
-        dst_vec = torch.matmul(M, (keypoints[i,:2] - crop_origin).float()).int()
-        if 0 <= dst_vec[0] < ow and 0 <= dst_vec[1] < oh:
-            dst_keypoints[i,:2] = dst_vec
-            dst_keypoints[i,2] = keypoints[i,2]
-        else:
-            # keypoints outside of the image size
-            dst_keypoints[i] = torch.tensor([0, 0, 0])
-
-    return image, dst_keypoints
+    return image, new_bbox
