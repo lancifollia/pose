@@ -126,6 +126,8 @@ class CocoDataset(Dataset):
         return len(self._dataset)
 
     def __getitem__(self, idx: int):
+        # TODO: return type should be specified
+
         sample = self.get_sample(idx)
         image_meta = self.get_image_meta(sample.image_id)
         image_path = image_meta.fpath
@@ -170,9 +172,9 @@ class CocoDataset(Dataset):
 
         return image, keypoints
 
-    def _get_rotate_factor(self, image_width, center_x):
+    def _get_rotate_factor(self, image_width: int, center_x: int) -> float:
         """Retrict rotating factor when side margin is small."""
-        side_margin = min(center_x, image_width-center_x)
+        side_margin = min(center_x, image_width - center_x)
         ratio = float(side_margin) / image_width
         if ratio < 0.1:
             return 5
@@ -181,7 +183,10 @@ class CocoDataset(Dataset):
         else:
             return self.rotate_factor
 
-    def _half_body_transform(self, keypoints, image_size):
+    def _half_body_transform(self,
+                             keypoints: KeyPoints,
+                             image_size: list[int]
+                             ) -> tuple[KeyPoints, BBox, list[int]]:
         num_upperbody_kps = keypoints.num_upperbody_visible()
         num_lowerbody_kps = keypoints.num_lowerbody_visible()
         min_kps = 2
@@ -218,12 +223,12 @@ class CocoDataset(Dataset):
         x1 = math.ceil(center_x - half_bw)
         y1 = math.ceil(center_y - half_bh)
 
-        bbox = [x1, y1, bw, bh]
+        bbox = BBox(x1, y1, bw, bh)
         center = [center_x, center_y]
 
         return dst_keypoints, bbox, center
 
-    def _read_image(self, image_path):
+    def _read_image(self, image_path: str) -> torch.Tensor:
         """
         torchvision.io.read_image() wrapper function
         to guarantee number of color channels to 3.
@@ -237,7 +242,7 @@ class CocoDataset(Dataset):
         else:
             raise ValueError("Invalid #color channel(={image.shape[0]}): {image_path}")
 
-    def get_connected_keypoints(self, keypoint_idx):
+    def get_connected_keypoints(self, keypoint_idx: int) -> list[int]:
         ret = set()
         for a, b in self.skeleton:
             if a == keypoint_idx:
@@ -246,21 +251,11 @@ class CocoDataset(Dataset):
                 ret.add(a)
         return list(ret)
 
-    def get_image_meta(self, image_idx):
+    def get_image_meta(self, image_idx: int) -> ImageMeta:
         return copy.deepcopy(self._image_meta[image_idx])
 
-    def get_sample(self, sample_idx):
+    def get_sample(self, sample_idx: int) -> DataSample:
         return copy.deepcopy(self._dataset[sample_idx])
 
-    def keypoints_idx2name(self, keypoint_idx):
+    def keypoints_idx2name(self, keypoint_idx: int) -> str:
         return self._keypoints_idx2name[keypoint_idx]
-
-
-if __name__ == "__main__":
-    # for testing
-    # bb = BBox(x=1, y=2, w=10, h=20)
-    bb = BBox(*[1,2,10,20])
-    print(bb)
-    print(type(bb))
-    x, y, w, h = bb
-    print(x, y, w, h)
