@@ -21,7 +21,7 @@ def train(config_fname):
     cfg = get_cfg_defaults()
     cfg.merge_from_file(config_fname)
     cfg.freeze()
-    logger.info(cfg)
+    logger.info(f"Configurations:\n{cfg}")
 
     input_transform = Compose([
         RescaleImgDiv255(),
