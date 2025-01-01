@@ -3,13 +3,14 @@
 """
 Dataset modules
 """
+from __future__ import annotations
 
 import copy
 import math
 import os
 import sys
 from collections.abc import Callable
-from typing import Optional, NamedTuple
+from typing import Optional, NamedTuple, Self
 
 import numpy as np
 import orjson
@@ -24,20 +25,55 @@ import transforms
 
 
 class ImageMeta(NamedTuple):
-    fpath: str
-    w: int
-    h: int
+    fpath: str  # image file path
+    w: int      # width of the image
+    h: int      # height of the image
 
 
 class BBox(NamedTuple):
     x: int  # left upper x coordinate
     y: int  # left upper y coordinate
-    w: int  # widht
-    h: int  # height
+    w: int  # widht of the bounding box
+    h: int  # height of the bounding box
+
+
+class KeyPoints(object):
+    num_kp = 17         # COCO dataset
+    upperbody_idx = 13  # 13: L-knee
+    lowerbody_idx = 11  # 11: L-hip
+
+    def __init__(self, anno: list[float]) -> None:
+        # COCO dataset keypoints annotation format: a list of length 51(=17x3)
+        # 17x3: 17 for 17 keypoints, 3 for (x, y, v(isibility))
+        # v=0: not labeled, v=1: labeled but not visible, and v=2: labeled and visible.
+        kp = torch.tensor(anno, dtype=torch.int32).reshape(self.num_kp,3)
+        self._kp = kp[:,:2]
+        self._vis = kp[:,2]
+        self._vis_level = 0  # default visibility level
+
+    def is_ith_kp_visible(self, idx: int) -> bool:
+        return bool(self._vis[idx] > self._vis_level)
+
+    def num_visible(self) -> int:
+        return int(torch.sum(self._vis > self._vis_level))
+
+    def num_upperbody_visible(self) -> int:
+        return int(torch.sum(self._vis[:self.upperbody_idx] > self._vis_level))
+
+    def num_lowerbody_visible(self) -> int:
+        return int(torch.sum(self._vis[self.lowerbody_idx:] > self._vis_level))
+
+    def hflip(self, image_width) -> KeyPoints:
+        ret = copy.deepcopy(self)
+        for i in range(self.num_kp):
+            if ret.is_ith_kp_visible(i) is False:
+                continue
+            ret._kp[i][0] = image_width - self._kp[i,0]
+        return ret
 
 
 class DataSample(NamedTuple):
-    keypoints: torch.Tensor
+    keypoints: KeyPoints
     bbox: BBox
     image_id: int
     id: int
@@ -100,8 +136,8 @@ class CocoDataset(Dataset):
                 num_skip_not_human += 1
                 continue
             # 3dim(x,y,vis) for 17 keypoints
-            kp = torch.tensor(_anno['keypoints'], dtype=torch.int32).reshape(17,3)
-            if torch.sum(kp[:,2] > 0) < min_keypoints:
+            kp = KeyPoints(_anno['keypoints'])
+            if kp.num_visible() < min_keypoints:
                 num_skip_insufficient_keypoints += 1
                 continue
             bbox = BBox(*[math.floor(_x) for _x in _anno['bbox']])
@@ -145,17 +181,14 @@ class CocoDataset(Dataset):
         scale = 1.25  # default scale
         if self.do_data_augment:
             if np.random.random() < self.half_body_proba \
-               and sum(keypoints[:,2] > 0) > self.half_body_min_kps:
+               and keypoints.num_visible() > self.half_body_min_kps:
                 keypoints, bbox, center = self._half_body_transform(keypoints, image_size)
                 x, y, bw, bh = bbox
                 logger.debug("the image is half-body transformed.")
             if np.random.random() < self.flip_proba:
                 image = image.flip(2)
                 center[0] = image_size[0] - center[0]
-                for i in range(keypoints.shape[0]):
-                    if keypoints[i,2] == 0:   # visibility
-                        continue
-                    keypoints[i,0] = image_size[0] - keypoints[i,0]
+                keypoints = keypoints.hflip(image_size[0])
                 logger.debug("the image is horizontally flipped.")
             rotate_factor = self._get_rotate_factor(image_size[0], center[0])
             rotate = np.clip(np.random.randn() * rotate_factor,
@@ -191,8 +224,8 @@ class CocoDataset(Dataset):
             return self.rotate_factor
 
     def _half_body_transform(self, keypoints, image_size):
-        num_upperbody_kps = sum(keypoints[:13,2] > 0) # 13: L-knee
-        num_lowerbody_kps = sum(keypoints[11:,2] > 0) # 11: L-hip
+        num_upperbody_kps = keypoints.num_upperbody_visible()
+        num_lowerbody_kps = keypoints.num_lowerbody_visible()
         min_kps = 2
 
         if num_upperbody_kps < min_kps:
@@ -208,6 +241,7 @@ class CocoDataset(Dataset):
         transf_part = "upper" if do_upperbody_transf else "lower"
         logger.debug(f"half body transform part: {transf_part}")
 
+        # TODO
         dst_keypoints = torch.zeros(keypoints.shape, dtype=torch.int32)
         for i in range(keypoints.shape[0]):
             if do_upperbody_transf is True and i >= 13:
