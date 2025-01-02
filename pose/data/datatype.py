@@ -47,6 +47,18 @@ class KeyPoints(object):
         center_y = min(valid_keypoints[:,1]) + math.ceil(bh * 0.5)
         return bw, bh, center_x, center_y
 
+    def overwrite_kp(self,
+                     idx: int,
+                     coordinate: torch.Tensor,  # [x, y]
+                     visibility: int
+                     ) -> None:
+        self._kp[idx] = coordinate
+        self._vis[idx] = visibility
+
+    def delete_kp(self, idx: int) -> None:
+        self._kp[idx] = torch.tensor([0, 0])
+        self._vis[idx] = 0
+
     def num_visible(self) -> int:
         return int(torch.sum(self._vis > self._vis_level))
 
@@ -58,18 +70,18 @@ class KeyPoints(object):
 
     def remove_upperbody_kps(self) -> KeyPoints:
         ret = copy.deepcopy(self)
-        for i in range(self.lowerbody_idx + 1):
+        for i in range(self.lowerbody_idx):
             if ret.is_ith_kp_visible(i) is False:
                 continue
-            ret._kp[i] = torch.tensor([0, 0])
+            ret.delete_kp(i)
         return ret
 
     def remove_lowerbody_kps(self) -> KeyPoints:
         ret = copy.deepcopy(self)
-        for i in range(self.upperbody_idx + 1, self.num_kp):
+        for i in range(self.upperbody_idx, self.num_kp):
             if ret.is_ith_kp_visible(i) is False:
                 continue
-            ret._kp[i] = torch.tensor([0, 0])
+            ret.delete_kp(i)
         return ret
 
     def hflip(self, image_width: int) -> KeyPoints:
@@ -77,7 +89,9 @@ class KeyPoints(object):
         for i in range(self.num_kp):
             if ret.is_ith_kp_visible(i) is False:
                 continue
-            ret._kp[i][0] = image_width - self._kp[i,0]
+            x, y = self._kp[i]
+            new_coord = [image_width - x, y]
+            ret.overwrite_kp(i, torch.Tensor(new_coord), int(self._vis[i]))
         return ret
 
     def rotate(self,
@@ -95,12 +109,10 @@ class KeyPoints(object):
                 continue
             dst_vec = torch.matmul(M, (self._kp[i] - c).float()).int() + c
             if 0 <= dst_vec[0] < image_size[0] and 0 <= dst_vec[1] < image_size[1]:
-                ret._kp[i] = dst_vec
-                ret._vis[i] = self._vis[i]
+                ret.overwrite_kp(i, dst_vec, int(self._vis[i]))
             else:
                 # keypoints outside of the image size
-                ret._kp[i] = torch.tensor([0, 0])
-                ret._vis[i] = 0
+                ret.delete_kp(i)
         return ret
 
     def stretch(self,
@@ -118,10 +130,8 @@ class KeyPoints(object):
                 continue
             dst_vec = torch.matmul(M, (self._kp[i] - origin).float()).int()
             if 0 <= dst_vec[0] < tw and 0 <= dst_vec[1] < th:
-                ret._kp[i] = dst_vec
-                ret._vis[i] = self._vis[i]
+                ret.overwrite_kp(i, dst_vec, int(self._vis[i]))
             else:
                 # keypoints outside of the image size
-                ret._kp[i] = torch.tensor([0, 0])
-                ret._vis[i] = 0
+                ret.delete_kp(i)
         return ret

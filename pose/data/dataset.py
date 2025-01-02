@@ -187,13 +187,11 @@ class CocoDataset(Dataset):
                              keypoints: KeyPoints,
                              image_size: list[int]
                              ) -> tuple[KeyPoints, BBox, list[int]]:
-        num_upperbody_kps = keypoints.num_upperbody_visible()
-        num_lowerbody_kps = keypoints.num_lowerbody_visible()
         min_kps = 2
 
-        if num_upperbody_kps < min_kps:
+        if keypoints.num_upperbody_visible() < min_kps:
             do_upperbody_transf = False
-        elif num_lowerbody_kps < min_kps:
+        elif keypoints.num_lowerbody_visible() < min_kps:
             do_upperbody_transf = True
         else:
             if np.random.randn() < 0.5:
@@ -208,6 +206,7 @@ class CocoDataset(Dataset):
             dst_keypoints = keypoints.remove_lowerbody_kps()
         else:
             dst_keypoints = keypoints.remove_upperbody_kps()
+        logger.debug(f"visible kps: {dst_keypoints.num_visible()}")
 
         iw, ih = image_size
         bw, bh, center_x, center_y = dst_keypoints.get_bbox_size_and_center()
