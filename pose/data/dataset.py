@@ -41,7 +41,7 @@ class CocoDataset(Dataset):
     def __init__(self,
                  anno_fname: str,
                  image_dir: str,
-                 nn_input_size: int,
+                 nn_input_size: list[int],  # [height, width]
                  data_aug_cfg: CfgNode,
                  min_keypoints: int = 1,
                  transform: Optional[Callable[[torch.Tensor], torch.Tensor]] = None
@@ -53,7 +53,7 @@ class CocoDataset(Dataset):
         logger.info(f"Annotation fname: {anno_fname}")
         self.image_dir = image_dir
         self.nn_input_size = nn_input_size
-        logger.info(f"NN input size: {self.nn_input_size}")
+        logger.info(f"NN input size(height, width): {self.nn_input_size}")
         self.transform = transform
 
         if data_aug_cfg is None:

@@ -5,29 +5,35 @@ import sys
 
 import torch
 from loguru import logger
-from torchvision.transforms.v2.functional import affine, resize
 from torchvision.transforms.v2 import InterpolationMode
+from torchvision.transforms.v2.functional import affine, resize
 
 sys.path.insert(0, os.path.dirname(__file__))
 from datatype import BBox
 
 
 class RescaleImgDiv255(object):
-    def __call__(self, pic):
-        if type(pic) not in [torch.tensor, torch.Tensor]:
-            raise ValueError("Only torch.tensor type is supported.")
+    def __call__(self, pic: torch.Tensor) -> torch.Tensor:
         if pic.dtype != torch.uint8:
             raise ValueError("dtype should be torch.uint8")
         return pic.div(255)
 
 
-def rotate_image(image, rotate, center):
+def rotate_image(image: torch.Tensor,
+                 rotate: float,
+                 center: list[int]
+                 ) -> torch.Tensor:
     return affine(image, rotate, translate=[0,0], scale=1.0, shear=[0,0],
                   interpolation=InterpolationMode.BILINEAR, center=center)
 
 
-def crop_and_resize_image(image, scale, center,
-                          box_width, box_height, out_image_size):
+def crop_and_resize_image(image: torch.Tensor,
+                          scale: float,
+                          center: list[int],
+                          box_width: int,
+                          box_height: int,
+                          out_image_size: list[int]
+                          ) -> tuple[torch.Tensor, BBox]:
     ih, iw = image.shape[1:]  # input image shape
     oh, ow = out_image_size
     aspect_ratio = float(ow) / oh
