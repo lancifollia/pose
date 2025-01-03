@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 from __future__ import annotations
 
 import copy
@@ -96,8 +94,8 @@ class KeyPoints(object):
 
     def rotate(self,
                angle: int,                  # angle in degrees
-               center: tuple[int, int],     # (x, y)
-               image_size: tuple[int, int]  # (w, h)
+               center: list[int],     # (x, y)
+               image_size: list[int]  # (w, h)
                ) -> KeyPoints:
         theta = math.pi * angle / 180  # to radian
         M = torch.tensor([[math.cos(theta), -1 * math.sin(theta)],
@@ -117,7 +115,7 @@ class KeyPoints(object):
 
     def stretch(self,
                 bbox: BBox,
-                target_size: tuple[int, int]
+                target_size: list[int],
                 ) -> KeyPoints:
         bx, by, bw, bh = bbox
         origin = torch.tensor([bx, by])

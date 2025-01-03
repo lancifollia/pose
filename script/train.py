@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 """
 Training script
 """
@@ -10,11 +8,11 @@ from loguru import logger
 from torch.utils.data import DataLoader
 from torchvision.transforms import Compose, Normalize
 
-sys.path.insert(0, path.join(path.dirname(__file__), '..', 'pose'))
+sys.path.insert(0, path.join(path.dirname(__file__), '..'))
 
-from config import get_cfg_defaults
-from data.dataset import CocoDataset
-from data.transforms import RescaleImgDiv255
+from pose.config import get_cfg_defaults
+from pose.data.dataset import CocoDataset
+from pose.data.transforms import RescaleImgDiv255
 
 
 def train(config_fname):

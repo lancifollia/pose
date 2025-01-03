@@ -9,7 +9,7 @@ from torchvision.transforms.v2 import InterpolationMode
 from torchvision.transforms.v2.functional import affine, resize
 
 sys.path.insert(0, os.path.dirname(__file__))
-from datatype import BBox
+from pose.data.datatype import BBox
 
 
 class RescaleImgDiv255(object):

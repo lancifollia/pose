@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 """
 Dataset modules
 """
@@ -7,7 +5,6 @@ Dataset modules
 import copy
 import math
 import os
-import sys
 from collections.abc import Callable
 from typing import Optional, NamedTuple
 
@@ -19,9 +16,8 @@ from loguru import logger
 from torch.utils.data import Dataset
 from yacs.config import CfgNode
 
-sys.path.insert(0, os.path.dirname(__file__))
-import transforms
-from datatype import BBox, KeyPoints
+from pose.data import transforms
+from pose.data.datatype import BBox, KeyPoints
 
 
 class ImageMeta(NamedTuple):
@@ -212,9 +208,9 @@ class CocoDataset(Dataset):
         bw, bh, center_x, center_y = dst_keypoints.get_bbox_size_and_center()
 
         scale_factor = 1.5
-        bw = bw * scale_factor
+        bw = math.ceil(bw * scale_factor)
         half_bw = min(bw * 0.5, center_x, iw - center_x)
-        bh = bh * scale_factor
+        bh = math.ceil(bh * scale_factor)
         half_bh = min(bh * 0.5, center_y, ih - center_y)
         bw = math.ceil(half_bw * 2)
         bh = math.ceil(half_bh * 2)

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from yacs.config import CfgNode as CN
 
 
