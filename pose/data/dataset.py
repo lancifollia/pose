@@ -96,7 +96,7 @@ class CocoDataset(Dataset):
                 continue
             # Convert bbox format from COCO data format(=xywh) to yxhw
             x, y, w, h = [math.floor(_x) for _x in _anno['bbox']]
-            bbox = BBox(y=y, x=x, w=w, h=h)
+            bbox = BBox(y=y, x=x, h=h, w=w)
             self._dataset.append(DataSample(keypoints=kp, bbox=bbox,
                                             image_id=_anno['image_id'], id=_anno['id']))
         logger.info(f"skip crowd: {num_skip_crowd:,d}")
@@ -130,7 +130,7 @@ class CocoDataset(Dataset):
         image_meta = self.get_image_meta(sample.image_id)
         image_path = image_meta.fpath
         image_size = [image_meta.w, image_meta.h]
-        y, x, bh, bw = sample.bbox
+        y, x, bh, bw = sample.bbox.get_yxhw()
         center = [int(x+0.5*bw), int(y+0.5*bh)]
         image = self._read_image(image_path)  # (c,h,w)
         keypoints = sample.keypoints
@@ -141,7 +141,7 @@ class CocoDataset(Dataset):
             if np.random.random() < self.half_body_proba \
                and keypoints.num_visible() > self.half_body_min_kps:
                 keypoints, bbox, center = self._half_body_transform(keypoints, image_size)
-                y, x, bh, bw = bbox
+                y, x, bh, bw = bbox.get_yxhw()
                 logger.debug("the image is half-body transformed.")
             if np.random.random() < self.flip_proba:
                 image = image.flip(2)
@@ -226,7 +226,7 @@ class CocoDataset(Dataset):
         x1 = math.ceil(center_x - half_bw)
         y1 = math.ceil(center_y - half_bh)
 
-        bbox = BBox(y1, x1, bh, bw)
+        bbox = BBox(y=y1, x=x1, h=bh, w=bw)
         center = [center_x, center_y]
 
         return dst_keypoints, bbox, center

@@ -2,16 +2,25 @@ from __future__ import annotations
 
 import copy
 import math
-from typing import NamedTuple
 
 import torch
 
 
-class BBox(NamedTuple):
-    y: int  # left upper y coordinate
-    x: int  # left upper x coordinate
-    h: int  # height of the bounding box
-    w: int  # widht of the bounding box
+class BBox(object):
+    def __init__(self, y: int, x: int, h:int, w:int) -> None:
+        """
+        y: left upper y coordinate
+        x: left upper x coordinate
+        h: height of the bounding box
+        w: widht of the bounding box
+        """
+        self.y = y
+        self.x = x
+        self.h = h
+        self.w = w
+
+    def get_yxhw(self) -> tuple[int, int, int, int]:
+        return self.y, self.x, self.h, self.w
 
 
 class KeyPoints(object):
@@ -117,7 +126,7 @@ class KeyPoints(object):
                 bbox: BBox,
                 target_size: list[int],
                 ) -> KeyPoints:
-        by, bx, bh, bw = bbox
+        by, bx, bh, bw = bbox.get_yxhw()
         origin = torch.tensor([bx, by])
         th, tw = target_size
         M = torch.tensor([[float(tw)/bw, 0],  # scaling linear transform
