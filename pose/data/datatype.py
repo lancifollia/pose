@@ -71,7 +71,9 @@ class KeyPoints(object):
             raise ValueError(f"Invalid keypoint coordinate: {coord}")
 
     def get_vis(self) -> torch.Tensor:
-        return self._vis
+        vis = copy.deepcopy(self._vis)
+        vis[self._vis < self._vis_level] = 0
+        return vis
 
     def get_bbox_size_and_center(self) -> tuple[int, int, int, int]:
         valid_keypoints = self._kp[self._vis >= self._vis_level]
