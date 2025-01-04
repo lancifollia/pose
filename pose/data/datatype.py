@@ -134,8 +134,8 @@ class KeyPoints(object):
                image_size: list[int]  # (h,w)
                ) -> KeyPoints:
         theta = math.pi * angle / 180  # degrees to radians
-        M = torch.tensor([[-1 * math.sin(theta), math.cos(theta)],
-                          [math.cos(theta), math.sin(theta)]])
+        M = torch.tensor([[math.cos(theta), math.sin(theta)],
+                          [-1 * math.sin(theta), math.cos(theta)]])
         c = torch.tensor(center)
         ret = copy.deepcopy(self)
         for i in range(self.num_kp):

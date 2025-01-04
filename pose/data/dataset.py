@@ -156,11 +156,9 @@ class CocoDataset(Dataset):
                                     1 - self.scale_factor, 1 + self.scale_factor)
         logger.debug(f"rotate: {rotate:.2f}, scale: {scale:.2f}")
 
-        # TODO: Rotation funtion dosn't work.
-        # image = transforms.rotate_image(image, rotate, center)
-        # keypoints = keypoints.rotate(rotate, center, image_size)
+        image = transforms.rotate_image(image, rotate, center)
+        keypoints = keypoints.rotate(rotate, center, image_size)
 
-        # resizing bbox & cropping
         image, bbox = transforms.crop_and_resize_image(image, scale, center,
                                                        [bh, bw], self.nn_input_size)
         keypoints = keypoints.stretch(bbox, self.nn_input_size)

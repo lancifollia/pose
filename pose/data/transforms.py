@@ -21,10 +21,13 @@ class RescaleImgDiv255(object):
 
 def rotate_image(image: torch.Tensor,
                  rotate: float,
-                 center: list[int]
+                 center: list[int]  # (y,x)
                  ) -> torch.Tensor:
+    # Change center coordinate (y,x) -> (x,y)
+    # torchvision.transforms.affine() uses xy coordinate.
+    center_xy = [center[1], center[0]]
     return affine(image, rotate, translate=[0,0], scale=1.0, shear=[0,0],
-                  interpolation=InterpolationMode.BILINEAR, center=center)
+                  interpolation=InterpolationMode.BILINEAR, center=center_xy)
 
 
 def crop_and_resize_image(image: torch.Tensor,
