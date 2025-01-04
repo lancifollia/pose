@@ -132,7 +132,7 @@ class CocoDataset(Dataset):
         image_path = image_meta.fpath
         image_size = [image_meta.h, image_meta.w]
         y, x, bh, bw = sample.bbox.get_yxhw()
-        center = [int(y+0.5*bh), int(x+0.5*bw)]
+        center = [math.floor(y+0.5*bh), math.floor(x+0.5*bw)]
         image = self._read_image(image_path)  # (c,h,w)
         keypoints = sample.keypoints
 

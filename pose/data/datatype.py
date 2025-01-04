@@ -46,7 +46,7 @@ class KeyPoints(object):
             # - v=0: not labeled, v=1: labeled but not visible, and v=2: labeled and visible.
             coco_kp = torch.tensor(anno, dtype=torch.int32).reshape(self.num_kp, 3)
 
-            self._kp = torch.zeros(self.num_kp, 2)  # 2 for (y,x)
+            self._kp = torch.zeros(self.num_kp, 2, dtype=torch.int32)  # 2 for (y,x)
             # Convert COCO dataset coordinate system (x,y) to row-major (y,x)
             self._kp[:,0] = coco_kp[:,1]
             self._kp[:,1] = coco_kp[:,0]
