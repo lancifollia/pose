@@ -162,11 +162,17 @@ class CocoDataset(Dataset):
         keypoints = keypoints.stretch(bbox, self.nn_input_size)
 
         if self.transform is not None:
-            image = self.transform(image)
+            nn_input_image = self.transform(image)
+        else:
+            nn_input_image = copy.deepcopy(image)
 
-        #TODO: Generating SimCC x,y label.
+        # TODO: Generating SimCC x, y labels.
+        # x_labels = None
+        # y_labels = None
+        # label_weights = None
 
-        return image, keypoints
+        # return nn_input_image, x_labels, y_labels, label_weights, image, keypoints
+        return nn_input_image, keypoints
 
     def _get_rotate_factor(self, image_width: int, center_x: int) -> float:
         """Retrict rotating factor when side margin is small."""

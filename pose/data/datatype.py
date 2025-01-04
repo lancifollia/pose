@@ -93,7 +93,7 @@ class KeyPoints(object):
         return ret
 
     def rotate(self,
-               angle: int,                  # angle in degrees
+               angle: int,            # angle in degrees
                center: list[int],     # (x, y)
                image_size: list[int]  # (w, h)
                ) -> KeyPoints:
