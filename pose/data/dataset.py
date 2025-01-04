@@ -22,8 +22,8 @@ from pose.data.datatype import BBox, KeyPoints
 
 class ImageMeta(NamedTuple):
     fpath: str  # image file path
-    w: int      # width of the image
     h: int      # height of the image
+    w: int      # width of the image
 
 
 class DataSample(NamedTuple):
@@ -72,7 +72,7 @@ class CocoDataset(Dataset):
         self._image_meta = {}
         for _image in anno['images']:
             m = ImageMeta(fpath=os.path.join(self.image_dir, _image['file_name']),
-                          w=_image['width'], h=_image['height'])
+                          h=_image['height'], w=_image['width'])
             self._image_meta[_image['id']] = m
         logger.info(f"Num images: {len(self._image_meta):,d}")
 
@@ -94,7 +94,9 @@ class CocoDataset(Dataset):
             if kp.num_visible() < min_keypoints:
                 num_skip_insufficient_keypoints += 1
                 continue
-            bbox = BBox(*[math.floor(_x) for _x in _anno['bbox']])
+            # Convert bbox format from COCO data format(=xywh) to yxhw
+            x, y, w, h = [math.floor(_x) for _x in _anno['bbox']]
+            bbox = BBox(y=y, x=x, w=w, h=h)
             self._dataset.append(DataSample(keypoints=kp, bbox=bbox,
                                             image_id=_anno['image_id'], id=_anno['id']))
         logger.info(f"skip crowd: {num_skip_crowd:,d}")
@@ -128,7 +130,7 @@ class CocoDataset(Dataset):
         image_meta = self.get_image_meta(sample.image_id)
         image_path = image_meta.fpath
         image_size = [image_meta.w, image_meta.h]
-        x, y, bw, bh = sample.bbox
+        y, x, bh, bw = sample.bbox
         center = [int(x+0.5*bw), int(y+0.5*bh)]
         image = self._read_image(image_path)  # (c,h,w)
         keypoints = sample.keypoints
@@ -139,7 +141,7 @@ class CocoDataset(Dataset):
             if np.random.random() < self.half_body_proba \
                and keypoints.num_visible() > self.half_body_min_kps:
                 keypoints, bbox, center = self._half_body_transform(keypoints, image_size)
-                x, y, bw, bh = bbox
+                y, x, bh, bw = bbox
                 logger.debug("the image is half-body transformed.")
             if np.random.random() < self.flip_proba:
                 image = image.flip(2)
@@ -224,7 +226,7 @@ class CocoDataset(Dataset):
         x1 = math.ceil(center_x - half_bw)
         y1 = math.ceil(center_y - half_bh)
 
-        bbox = BBox(x1, y1, bw, bh)
+        bbox = BBox(y1, x1, bh, bw)
         center = [center_x, center_y]
 
         return dst_keypoints, bbox, center

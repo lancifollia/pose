@@ -8,10 +8,10 @@ import torch
 
 
 class BBox(NamedTuple):
-    x: int  # left upper x coordinate
     y: int  # left upper y coordinate
-    w: int  # widht of the bounding box
+    x: int  # left upper x coordinate
     h: int  # height of the bounding box
+    w: int  # widht of the bounding box
 
 
 class KeyPoints(object):
@@ -117,7 +117,7 @@ class KeyPoints(object):
                 bbox: BBox,
                 target_size: list[int],
                 ) -> KeyPoints:
-        bx, by, bw, bh = bbox
+        by, bx, bh, bw = bbox
         origin = torch.tensor([bx, by])
         th, tw = target_size
         M = torch.tensor([[float(tw)/bw, 0],  # scaling linear transform

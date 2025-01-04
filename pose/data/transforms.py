@@ -56,7 +56,7 @@ def crop_and_resize_image(image: torch.Tensor,
                  center[1] - math.ceil(box_height * 0.5)), 0)
     logger.debug(f"original image size: {image.shape}")
     logger.debug(f"original box size: {box_width}, {box_height}")
-    new_bbox = BBox(x1, y1, bw, bh)
+    new_bbox = BBox(y1, x1, bh, bw)
     logger.debug(f"new bbox: {new_bbox}")
 
     image = image[:, y1:y1+bh, x1:x1+bw]
