@@ -52,12 +52,12 @@ class KeyPoints(object):
             self._kp[:,1] = coco_kp[:,0]
 
             self._vis = coco_kp[:,2]
-            self._vis_level = 0  # default visibility level
+            self._vis_level = 2  # default visibility level
         else:
             raise Exception(f"Invalid data format: {data_format}")
 
     def is_ith_kp_visible(self, idx: int) -> bool:
-        return bool(self._vis[idx] > self._vis_level)
+        return bool(self._vis[idx] >= self._vis_level)
 
     def get_kp(self, coord: str = "yx") -> torch.Tensor:
         if coord == "yx":
@@ -74,7 +74,7 @@ class KeyPoints(object):
         return self._vis
 
     def get_bbox_size_and_center(self) -> tuple[int, int, int, int]:
-        valid_keypoints = self._kp[self._vis > self._vis_level]
+        valid_keypoints = self._kp[self._vis >= self._vis_level]
         bh = max(valid_keypoints[:,0]) - min(valid_keypoints[:,0])
         bw = max(valid_keypoints[:,1]) - min(valid_keypoints[:,1])
         center_y = min(valid_keypoints[:,0]) + math.ceil(bh * 0.5)
@@ -94,13 +94,13 @@ class KeyPoints(object):
         self._vis[idx] = 0
 
     def num_visible(self) -> int:
-        return int(torch.sum(self._vis > self._vis_level))
+        return int(torch.sum(self._vis >= self._vis_level))
 
     def num_upperbody_visible(self) -> int:
-        return int(torch.sum(self._vis[:self.upperbody_idx] > self._vis_level))
+        return int(torch.sum(self._vis[:self.upperbody_idx] >= self._vis_level))
 
     def num_lowerbody_visible(self) -> int:
-        return int(torch.sum(self._vis[self.lowerbody_idx:] > self._vis_level))
+        return int(torch.sum(self._vis[self.lowerbody_idx:] >= self._vis_level))
 
     def remove_upperbody_kps(self) -> KeyPoints:
         ret = copy.deepcopy(self)
