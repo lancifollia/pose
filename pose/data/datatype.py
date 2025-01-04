@@ -19,46 +19,73 @@ class BBox(object):
         self.h = h
         self.w = w
 
+    def __repr__(self):
+        return self._to_string()
+
+    def __str__(self):
+        return self._to_string()
+
+    def _to_string(self) -> str:
+        return f"y({self.y}) x({self.x}) h({self.h}) w({self.w})"
+
     def get_yxhw(self) -> tuple[int, int, int, int]:
         return self.y, self.x, self.h, self.w
 
 
 class KeyPoints(object):
-    num_kp = 17         # COCO dataset
-    upperbody_idx = 13  # 13: L-knee
-    lowerbody_idx = 11  # 11: L-hip
 
-    def __init__(self, anno: list[float]) -> None:
-        # COCO dataset keypoints annotation format: a list of length 51(=17x3)
-        # 17x3: 17 for 17 keypoints, 3 for (x, y, v(isibility))
-        # v=0: not labeled, v=1: labeled but not visible, and v=2: labeled and visible.
-        kp = torch.tensor(anno, dtype=torch.int32).reshape(self.num_kp,3)
-        self._kp = kp[:,:2]
-        self._vis = kp[:,2]
-        self._vis_level = 0  # default visibility level
+    def __init__(self, anno: list[float], data_format: str) -> None:
+        if data_format == "COCO":
+            # General COCO dataset info
+            self.num_kp = 17         # COCO dataset
+            self.upperbody_idx = 13  # 13: L-knee
+            self.lowerbody_idx = 11  # 11: L-hip
+
+            # COCO dataset keypoints annotation format: a list of length 51(=17x3)
+            # - 17x3: 17 for 17 keypoints, 3 for (x, y, v(isibility))
+            # - v=0: not labeled, v=1: labeled but not visible, and v=2: labeled and visible.
+            coco_kp = torch.tensor(anno, dtype=torch.int32).reshape(self.num_kp, 3)
+
+            self._kp = torch.zeros(self.num_kp, 2)  # 2 for (y,x)
+            # Convert COCO dataset coordinate system (x,y) to row-major (y,x)
+            self._kp[:,0] = coco_kp[:,1]
+            self._kp[:,1] = coco_kp[:,0]
+
+            self._vis = coco_kp[:,2]
+            self._vis_level = 0  # default visibility level
+        else:
+            raise Exception(f"Invalid data format: {data_format}")
 
     def is_ith_kp_visible(self, idx: int) -> bool:
         return bool(self._vis[idx] > self._vis_level)
 
-    def get_kp(self) -> torch.Tensor:
-        return self._kp
+    def get_kp(self, coord: str = "yx") -> torch.Tensor:
+        if coord == "yx":
+            return self._kp
+        elif coord == "xy":
+            ret = torch.zeros(self.num_kp, 2)
+            ret[:,0] = self._kp[:,1]
+            ret[:,1] = self._kp[:,0]
+            return ret
+        else:
+            raise ValueError(f"Invalid keypoint coordinate: {coord}")
 
     def get_vis(self) -> torch.Tensor:
         return self._vis
 
     def get_bbox_size_and_center(self) -> tuple[int, int, int, int]:
         valid_keypoints = self._kp[self._vis > self._vis_level]
-        bw = max(valid_keypoints[:,0]) - min(valid_keypoints[:,0])
-        bh = max(valid_keypoints[:,1]) - min(valid_keypoints[:,1])
-        center_x = min(valid_keypoints[:,0]) + math.ceil(bw * 0.5)
-        center_y = min(valid_keypoints[:,1]) + math.ceil(bh * 0.5)
-        return bw, bh, center_x, center_y
+        bh = max(valid_keypoints[:,0]) - min(valid_keypoints[:,0])
+        bw = max(valid_keypoints[:,1]) - min(valid_keypoints[:,1])
+        center_y = min(valid_keypoints[:,0]) + math.ceil(bh * 0.5)
+        center_x = min(valid_keypoints[:,1]) + math.ceil(bw * 0.5)
+        return bh, bw, center_y, center_x
 
-    def overwrite_kp(self,
-                     idx: int,
-                     coordinate: torch.Tensor,  # [x, y]
-                     visibility: int
-                     ) -> None:
+    def update_kp(self,
+                  idx: int,
+                  coordinate: torch.Tensor,  # (y,x)
+                  visibility: int
+                  ) -> None:
         self._kp[idx] = coordinate
         self._vis[idx] = visibility
 
@@ -96,19 +123,19 @@ class KeyPoints(object):
         for i in range(self.num_kp):
             if ret.is_ith_kp_visible(i) is False:
                 continue
-            x, y = self._kp[i]
-            new_coord = [image_width - x, y]
-            ret.overwrite_kp(i, torch.Tensor(new_coord), int(self._vis[i]))
+            y, x = self._kp[i]
+            new_coord = [y, image_width - x]
+            ret.update_kp(i, torch.Tensor(new_coord), int(self._vis[i]))
         return ret
 
     def rotate(self,
                angle: int,            # angle in degrees
-               center: list[int],     # (x, y)
-               image_size: list[int]  # (w, h)
+               center: list[int],     # (y,x)
+               image_size: list[int]  # (h,w)
                ) -> KeyPoints:
-        theta = math.pi * angle / 180  # to radian
-        M = torch.tensor([[math.cos(theta), -1 * math.sin(theta)],
-                          [math.sin(theta), math.cos(theta)]])
+        theta = math.pi * angle / 180  # degrees to radians
+        M = torch.tensor([[-1 * math.sin(theta), math.cos(theta)],
+                          [math.cos(theta), math.sin(theta)]])
         c = torch.tensor(center)
         ret = copy.deepcopy(self)
         for i in range(self.num_kp):
@@ -116,7 +143,7 @@ class KeyPoints(object):
                 continue
             dst_vec = torch.matmul(M, (self._kp[i] - c).float()).int() + c
             if 0 <= dst_vec[0] < image_size[0] and 0 <= dst_vec[1] < image_size[1]:
-                ret.overwrite_kp(i, dst_vec, int(self._vis[i]))
+                ret.update_kp(i, dst_vec, int(self._vis[i]))
             else:
                 # keypoints outside of the image size
                 ret.delete_kp(i)
@@ -124,20 +151,20 @@ class KeyPoints(object):
 
     def stretch(self,
                 bbox: BBox,
-                target_size: list[int],
+                target_size: list[int],  # (h, w)
                 ) -> KeyPoints:
         by, bx, bh, bw = bbox.get_yxhw()
-        origin = torch.tensor([bx, by])
+        origin = torch.tensor([by, bx])
         th, tw = target_size
-        M = torch.tensor([[float(tw)/bw, 0],  # scaling linear transform
-                          [0, float(th)/bh]], dtype=torch.float32)
+        M = torch.tensor([[float(th)/bh, 0],  # scaling linear transform
+                          [0, float(tw)/bw]], dtype=torch.float32)
         ret = copy.deepcopy(self)
         for i in range(self.num_kp):
             if ret.is_ith_kp_visible(i) is False:
                 continue
             dst_vec = torch.matmul(M, (self._kp[i] - origin).float()).int()
-            if 0 <= dst_vec[0] < tw and 0 <= dst_vec[1] < th:
-                ret.overwrite_kp(i, dst_vec, int(self._vis[i]))
+            if 0 <= dst_vec[0] < th and 0 <= dst_vec[1] < tw:
+                ret.update_kp(i, dst_vec, int(self._vis[i]))
             else:
                 # keypoints outside of the image size
                 ret.delete_kp(i)

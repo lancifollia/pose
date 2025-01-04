@@ -29,33 +29,35 @@ def rotate_image(image: torch.Tensor,
 
 def crop_and_resize_image(image: torch.Tensor,
                           scale: float,
-                          center: list[int],
-                          box_width: int,
-                          box_height: int,
-                          out_image_size: list[int]
+                          center: list[int],         # (y, x)
+                          src_box_size: list[int],   # (h, w)
+                          out_image_size: list[int]  # (h, w)
                           ) -> tuple[torch.Tensor, BBox]:
-    ih, iw = image.shape[1:]  # input image shape
+    cy, cx = center
+    sbh, sbw = src_box_size
+    ih, iw = image.shape[1:]  # image.shape: (C,H,W)
     oh, ow = out_image_size
     aspect_ratio = float(ow) / oh
 
+    logger.debug(f"original image size(c,h,w): {image.shape}")
+    logger.debug(f"original box size(h,w): {sbh}, {sbw}")
+    logger.debug(f"bbox center: {center}")
+
     # Resizing bbox & cropping
-    logger.debug(f"center: {center}")
-    bw = int(min(box_width * scale, 2 * (iw - center[0]), 2 * center[0]))
-    logger.debug(f"bw, {box_width * scale}, {2 * (iw - center[0])}, {2 * center[0]}")
-    bh = int(min(box_height * scale, 2 * (ih - center[1]), 2 * center[1]))
-    logger.debug(f"bh, {box_height * scale}, {2 * (ih - center[1])}, {2 * center[1]}")
+    bh = int(min(sbh * scale, 2 * (ih - cy), 2 * cy))
+    logger.debug(f"bh=min({sbh * scale}, {2 * (ih - cy)}, {2 * cy})")
+    bw = int(min(sbw * scale, 2 * (iw - cx), 2 * cx))
+    logger.debug(f"bw=min({sbw * scale}, {2 * (iw - cx)}, {2 * cx})")
     if bw >= bh * aspect_ratio:
-        bh = int(min(float(bw) * aspect_ratio**-1, 2 * (ih - center[1]), 2 * center[1]))
+        bh = int(min(float(bw) * aspect_ratio**-1, 2 * (ih - cy), 2 * cy))
         bw = int(bh * aspect_ratio)
     else:
-        bw = int(min(bh * aspect_ratio, 2 * (iw - center[0]), 2 * center[0]))
+        bw = int(min(bh * aspect_ratio, 2 * (iw - cx), 2 * cx))
         bh = int(float(bw) * aspect_ratio**-1)
-    x1 = max(center[0] - math.ceil(bw * 0.5), 0)
     # On vertically long images, focus on the top.
-    y1 = max(min(center[1] - math.ceil(bh * 0.5),
-                 center[1] - math.ceil(box_height * 0.5)), 0)
-    logger.debug(f"original image size: {image.shape}")
-    logger.debug(f"original box size: {box_width}, {box_height}")
+    y1 = max(min(cy - math.ceil(bh * 0.5),
+                 cy - math.ceil(sbh * 0.5)), 0)
+    x1 = max(cx - math.ceil(bw * 0.5), 0)
     new_bbox = BBox(y=y1, x=x1, h=bh, w=bw)
     logger.debug(f"new bbox: {new_bbox}")
 

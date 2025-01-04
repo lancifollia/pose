@@ -89,8 +89,8 @@ class CocoDataset(Dataset):
             if _anno['category_id'] != 1:  # category_id==1: person
                 num_skip_not_human += 1
                 continue
-            # 3dim(x,y,vis) for 17 keypoints
-            kp = KeyPoints(_anno['keypoints'])
+            # 17 keypoints (COCO dataset format: 3dim(x,y,vis) for each kp)
+            kp = KeyPoints(anno=_anno['keypoints'], data_format=self.data_format)
             if kp.num_visible() < min_keypoints:
                 num_skip_insufficient_keypoints += 1
                 continue
@@ -106,6 +106,7 @@ class CocoDataset(Dataset):
         logger.info(f"Num final dataset(keypoints annotation) size: {len(self._dataset):,d}")
 
     def _init_coco_info(self) -> None:
+        self.data_format = "COCO"
         self.num_keypoints = 17
 
         kp_labels = ['nose', 'L-eye', 'R-eye', 'L-ear', 'R-ear',
@@ -129,9 +130,9 @@ class CocoDataset(Dataset):
         sample = self.get_sample(idx)
         image_meta = self.get_image_meta(sample.image_id)
         image_path = image_meta.fpath
-        image_size = [image_meta.w, image_meta.h]
+        image_size = [image_meta.h, image_meta.w]
         y, x, bh, bw = sample.bbox.get_yxhw()
-        center = [int(x+0.5*bw), int(y+0.5*bh)]
+        center = [int(y+0.5*bh), int(x+0.5*bw)]
         image = self._read_image(image_path)  # (c,h,w)
         keypoints = sample.keypoints
 
@@ -141,26 +142,27 @@ class CocoDataset(Dataset):
             if np.random.random() < self.half_body_proba \
                and keypoints.num_visible() > self.half_body_min_kps:
                 keypoints, bbox, center = self._half_body_transform(keypoints, image_size)
-                y, x, bh, bw = bbox.get_yxhw()
+                _, _, bh, bw = bbox.get_yxhw()
                 logger.debug("the image is half-body transformed.")
             if np.random.random() < self.flip_proba:
                 image = image.flip(2)
-                center[0] = image_size[0] - center[0]
-                keypoints = keypoints.hflip(image_size[0])
+                center[1] = image_size[1] - center[1]
+                keypoints = keypoints.hflip(image_size[1])
                 logger.debug("the image is horizontally flipped.")
-            rotate_factor = self._get_rotate_factor(image_size[0], center[0])
+            rotate_factor = self._get_rotate_factor(image_size[1], center[1])
             rotate = np.clip(np.random.randn() * rotate_factor,
                              rotate_factor * -2, rotate_factor * 2)
             scale = scale * np.clip(np.random.randn() * self.scale_factor + 1,
                                     1 - self.scale_factor, 1 + self.scale_factor)
         logger.debug(f"rotate: {rotate:.2f}, scale: {scale:.2f}")
 
-        image = transforms.rotate_image(image, rotate, center)
-        keypoints = keypoints.rotate(rotate, center, image_size)
+        # TODO: Rotation funtion dosn't work.
+        # image = transforms.rotate_image(image, rotate, center)
+        # keypoints = keypoints.rotate(rotate, center, image_size)
 
         # resizing bbox & cropping
         image, bbox = transforms.crop_and_resize_image(image, scale, center,
-                                                       bw, bh, self.nn_input_size)
+                                                       [bh, bw], self.nn_input_size)
         keypoints = keypoints.stretch(bbox, self.nn_input_size)
 
         if self.transform is not None:
@@ -213,21 +215,21 @@ class CocoDataset(Dataset):
         logger.debug(f"visible kps: {dst_keypoints.num_visible()}")
 
         iw, ih = image_size
-        bw, bh, center_x, center_y = dst_keypoints.get_bbox_size_and_center()
+        bh, bw, center_y, center_x = dst_keypoints.get_bbox_size_and_center()
 
         scale_factor = 1.5
-        bw = math.ceil(bw * scale_factor)
-        half_bw = min(bw * 0.5, center_x, iw - center_x)
         bh = math.ceil(bh * scale_factor)
         half_bh = min(bh * 0.5, center_y, ih - center_y)
-        bw = math.ceil(half_bw * 2)
+        bw = math.ceil(bw * scale_factor)
+        half_bw = min(bw * 0.5, center_x, iw - center_x)
         bh = math.ceil(half_bh * 2)
+        bw = math.ceil(half_bw * 2)
 
-        x1 = math.ceil(center_x - half_bw)
         y1 = math.ceil(center_y - half_bh)
+        x1 = math.ceil(center_x - half_bw)
 
         bbox = BBox(y=y1, x=x1, h=bh, w=bw)
-        center = [center_x, center_y]
+        center = [center_y, center_x]
 
         return dst_keypoints, bbox, center
 
