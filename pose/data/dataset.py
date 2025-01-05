@@ -6,7 +6,7 @@ import copy
 import math
 import os
 from collections.abc import Callable
-from typing import Optional, NamedTuple
+from typing import Dict, Optional, NamedTuple
 
 import numpy as np
 import orjson
@@ -51,6 +51,9 @@ class CocoDataset(Dataset):
         self.nn_input_size = nn_input_size
         logger.info(f"NN input size(height, width): {self.nn_input_size}")
         self.transform = transform
+
+        self.simcc_split_factor = 2
+        self.simcc_sigma = 1.0
 
         if data_aug_cfg is None:
             self.do_data_augment = False
@@ -124,9 +127,8 @@ class CocoDataset(Dataset):
     def __len__(self) -> int:
         return len(self._dataset)
 
-    def __getitem__(self, idx: int):
-        # TODO: return type should be specified
-
+    def __getitem__(self, idx: int)\
+        -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Dict]:
         sample = self.get_sample(idx)
         image_meta = self.get_image_meta(sample.image_id)
         image_path = image_meta.fpath
@@ -168,13 +170,10 @@ class CocoDataset(Dataset):
         else:
             nn_input_image = copy.deepcopy(image)
 
-        # TODO: Generating SimCC x, y labels.
-        # x_labels = None
-        # y_labels = None
-        # label_weights = None
+        target_y, target_x, target_weight = self._generate_simcc_label(keypoints)
+        extra_info = {"image": image, "keypoints": keypoints}
 
-        # return nn_input_image, x_labels, y_labels, label_weights, image, keypoints
-        return nn_input_image, keypoints
+        return nn_input_image, target_y, target_x, target_weight, extra_info
 
     def _get_rotate_factor(self, image_width: int, center_x: int) -> float:
         """Retrict rotating factor when side margin is small."""
@@ -244,6 +243,42 @@ class CocoDataset(Dataset):
             return image.repeat(3, 1, 1)
         else:
             raise ValueError("Invalid #color channel(={image.shape[0]}): {image_path}")
+
+    def _generate_simcc_label(self, keypoints: KeyPoints)\
+        -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        target_weight = torch.zeros((self.num_keypoints, 1), dtype=torch.float32)
+        target_weight[keypoints.get_vis() > 0] = 1.0
+
+        h, w = self.nn_input_size
+        sf = self.simcc_split_factor
+
+        target_y = torch.zeros((self.num_keypoints, h * sf), dtype=torch.float32)
+        target_x = torch.zeros((self.num_keypoints, w * sf), dtype=torch.float32)
+
+        sigma = self.simcc_sigma
+        buffer = sigma * 3
+        for kp_idx in range(self.num_keypoints):
+            ky, kx = keypoints.get_kp(kp_idx)
+
+            # Check that any part of the gaussian is in-bounds
+            uly, ulx = math.floor(ky - buffer), math.floor(kx - buffer)
+            bry, brx = math.ceil(ky + buffer + 1), math.ceil(kx + buffer + 1)
+            if uly < 0 or ulx < 0 or bry > h or brx > w:
+                target_weight[kp_idx] = 0.0
+
+            if target_weight[kp_idx] < 1e-10:
+                continue
+
+            # Space-aware Gaussian label smoothing
+            mu_y = ky * sf + math.ceil(sf / 2) - 1
+            mu_x = kx * sf + math.ceil(sf / 2) - 1
+            y = torch.arange(0, math.ceil(h * sf), 1, dtype=torch.float32)
+            x = torch.arange(0, math.ceil(w * sf), 1, dtype=torch.float32)
+            denom = sigma * np.sqrt(np.pi * 2)
+            target_y[kp_idx] = (torch.exp(- ((y - mu_y) ** 2) / (2 * sigma ** 2))) / denom
+            target_x[kp_idx] = (torch.exp(- ((x - mu_x) ** 2) / (2 * sigma ** 2))) / denom
+
+        return target_y, target_x, target_weight
 
     def get_connected_keypoints(self, keypoint_idx: int) -> list[int]:
         ret = set()

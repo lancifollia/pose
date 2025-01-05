@@ -59,9 +59,13 @@ class KeyPoints(object):
     def is_ith_kp_visible(self, idx: int) -> bool:
         return bool(self._vis[idx] >= self._vis_level)
 
-    def get_kp(self, coord: str = "yx") -> torch.Tensor:
+    def get_kp(self, idx: int) -> torch.Tensor:
+        return self._kp[idx]
+
+    def get_kps(self, coord: str = "yx") -> torch.Tensor:
+        """Dump all keypoints"""
         if coord == "yx":
-            return self._kp
+            return copy.deepcopy(self._kp)
         elif coord == "xy":
             ret = torch.zeros(self.num_kp, 2)
             ret[:,0] = self._kp[:,1]
