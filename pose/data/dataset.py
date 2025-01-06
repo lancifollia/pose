@@ -105,7 +105,7 @@ class CocoDataset(Dataset):
         logger.info(f"skip crowd: {num_skip_crowd:,d}")
         logger.info(f"skip not human: {num_skip_not_human:,d}")
         logger.info(f"skip insufficient keypoints: {num_skip_insufficient_keypoints:,d}")
-        logger.info(f"(minimum keypoints cutoff: {min_keypoints})")
+        logger.info(f"minimum keypoints cutoff: {min_keypoints}")
         logger.info(f"Num final dataset(keypoints annotation) size: {len(self._dataset):,d}")
 
     def _init_coco_info(self) -> None:

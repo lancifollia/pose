@@ -12,6 +12,7 @@ _C.DATA_COMMON = CN()
 _C.DATA_COMMON.MIN_KEYPOINTS = 1
 
 
+
 """Training Data"""
 _C.DATA_TRAIN = CN()
 _C.DATA_TRAIN.ANNOTATION_FNAME = "/home/dev/data/coco/annotations/person_keypoints_train2017.json"
@@ -39,10 +40,17 @@ _C.DATA_VAL.IMAGE_DIR = "/home/dev/data/coco/images/val2017/"
 _C.DATA_VAL.DATA_AUG = None
 
 
-"""Neural Networks"""
-_C.NN = CN()
+"""Model"""
+_C.MODEL = CN()
+_C.MODEL.NAME = None
 # Neural network input image size. [height, width]
-_C.NN.INPUT_SIZE = [256, 192]
+_C.MODEL.INPUT_SIZE = [256, 192]
+
+
+"""Model.Extra"""
+_C.MODEL.EXTRA = CN()
+# ResNet layer spec: 18, 34, 50, 101, 152
+_C.MODEL.EXTRA.NUM_RESNET_LAYERS = None
 
 
 """Model training"""

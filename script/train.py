@@ -1,21 +1,35 @@
 """
 Training script
 """
+import os
 import sys
-from os import path
 
 from loguru import logger
+from torch import nn
 from torch.utils.data import DataLoader
 from torchvision.transforms import Compose, Normalize
+from yacs.config import CfgNode
 
-sys.path.insert(0, path.join(path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from pose.config import get_cfg_defaults
 from pose.data.dataset import CocoDataset
 from pose.data.transforms import RescaleImgDiv255
 
 
-def train(config_fname):
+logger.remove()
+logger.add(sys.stderr, level="INFO")
+
+
+def get_model(cfg: CfgNode) -> nn.Module:
+    if cfg.MODEL.NAME == "resnet":
+        from pose.model.resnet import get_model
+        return get_model(cfg)
+    else:
+        raise ValueError(f"Invalid model name: {cfg.MODEL.NAME}")
+
+
+def train(config_fname: str) -> None:
     cfg = get_cfg_defaults()
     cfg.merge_from_file(config_fname)
     cfg.freeze()
@@ -30,14 +44,14 @@ def train(config_fname):
     logger.info("Preapring training dataset")
     tr_dataset = CocoDataset(anno_fname=cfg.DATA_TRAIN.ANNOTATION_FNAME,
                              image_dir=cfg.DATA_TRAIN.IMAGE_DIR,
-                             nn_input_size=cfg.NN.INPUT_SIZE,
+                             nn_input_size=cfg.MODEL.INPUT_SIZE,
                              data_aug_cfg=cfg.DATA_TRAIN.DATA_AUG,
                              min_keypoints=cfg.DATA_COMMON.MIN_KEYPOINTS,
                              transform=input_transform)
-    logger.info("Loading validation dataset")
+    logger.info("Preparing validation dataset")
     val_dataset = CocoDataset(anno_fname=cfg.DATA_VAL.ANNOTATION_FNAME,
                               image_dir=cfg.DATA_VAL.IMAGE_DIR,
-                              nn_input_size=cfg.NN.INPUT_SIZE,
+                              nn_input_size=cfg.MODEL.INPUT_SIZE,
                               data_aug_cfg=cfg.DATA_VAL.DATA_AUG,
                               min_keypoints=cfg.DATA_COMMON.MIN_KEYPOINTS,
                               transform=input_transform)
@@ -51,12 +65,13 @@ def train(config_fname):
                                 shuffle=True)
 
     # Prepare model parameter
-    device = "cuda"
-    model = None
+    model = get_model(cfg)
+    print(f"Model: {model}")
 
     # Iterate training epochs
 
     logger.info('Model training is complete')
+
 
 
 if __name__ == '__main__':
