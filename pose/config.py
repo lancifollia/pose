@@ -8,6 +8,7 @@ _C = CN()
 
 """Data Common"""
 _C.DATA_COMMON = CN()
+_C.DATA_COMMON.NUM_KEYPOINTS = 17  # COCO dataset
 # Minimum required keypoints for training sample.
 _C.DATA_COMMON.MIN_KEYPOINTS = 1
 
@@ -49,8 +50,16 @@ _C.MODEL.INPUT_SIZE = [256, 192]
 
 """Model.Extra"""
 _C.MODEL.EXTRA = CN()
+
+"""ModelExtra > SimCC"""
+_C.MODEL.EXTRA.SIMCC_SPLIT_FACTOR = 2
+_C.MODEL.EXTRA.SIMCC_SIGMA = 1.0
+
+"""Model.Extra > ResNet"""
 # ResNet layer spec: 18, 34, 50, 101, 152
-_C.MODEL.EXTRA.NUM_RESNET_LAYERS = None
+_C.MODEL.EXTRA.NUM_RESNET_LAYERS = 18
+_C.MODEL.EXTRA.NUM_CHANNEL_PER_KP = 28
+_C.MODEL.EXTRA.FINAL_CONV_KERNEL_SIZE = 1
 
 
 """Model training"""

@@ -13,6 +13,7 @@ import orjson
 import torch
 import torchvision
 from loguru import logger
+from torch import Tensor
 from torch.utils.data import Dataset
 from yacs.config import CfgNode
 
@@ -35,33 +36,37 @@ class DataSample(NamedTuple):
 
 class CocoDataset(Dataset):
     def __init__(self,
-                 anno_fname: str,
-                 image_dir: str,
-                 nn_input_size: list[int],  # [height, width]
-                 data_aug_cfg: CfgNode,
-                 min_keypoints: int = 1,
-                 transform: Optional[Callable[[torch.Tensor], torch.Tensor]] = None
+                 cfg: CfgNode,
+                 is_train_data: bool,
+                 transform: Optional[Callable[[Tensor], Tensor]] = None
                  ) -> None:
-
         self._init_coco_info()
+        data_cfg = cfg.DATA_TRAIN if is_train_data else cfg.DATA_VAL
+
+        anno_fname = data_cfg.ANNOTATION_FNAME
         with open(anno_fname) as _anno_fin:
             anno = orjson.loads(_anno_fin.read())
         logger.info(f"Annotation fname: {anno_fname}")
-        self.image_dir = image_dir
-        self.nn_input_size = nn_input_size
+        self.image_dir = data_cfg.IMAGE_DIR
+        logger.info(f"Image file director: {self.image_dir}")
+
+        self.nn_input_size = cfg.MODEL.INPUT_SIZE
         logger.info(f"NN input size(height, width): {self.nn_input_size}")
+        self.min_keypoints=cfg.DATA_COMMON.MIN_KEYPOINTS
+
+        self.simcc_split_factor = cfg.MODEL.EXTRA.SIMCC_SPLIT_FACTOR
+        self.simcc_sigma = cfg.MODEL.EXTRA.SIMCC_SIGMA
+
         self.transform = transform
 
-        self.simcc_split_factor = 2
-        self.simcc_sigma = 1.0
-
+        data_aug_cfg = data_cfg.DATA_AUG
         if data_aug_cfg is None:
             self.do_data_augment = False
             self.flip_proba = 0.0
             self.rotate_factor = 0
             self.scale_factor = 0.0
             self.half_body_proba = 0.0
-            self.half_body_min_kps = 100
+            self.half_body_min_kps = 1e+10
         else:
             self.do_data_augment = True
             self.flip_proba = data_aug_cfg.FLIP_PROBA
@@ -94,7 +99,7 @@ class CocoDataset(Dataset):
                 continue
             # 17 keypoints (COCO dataset format: 3dim(x,y,vis) for each kp)
             kp = KeyPoints(anno=_anno['keypoints'], data_format=self.data_format)
-            if kp.num_visible() < min_keypoints:
+            if kp.num_visible() < self.min_keypoints:
                 num_skip_insufficient_keypoints += 1
                 continue
             # Convert bbox format from COCO data format(=xywh) to yxhw
@@ -105,7 +110,7 @@ class CocoDataset(Dataset):
         logger.info(f"skip crowd: {num_skip_crowd:,d}")
         logger.info(f"skip not human: {num_skip_not_human:,d}")
         logger.info(f"skip insufficient keypoints: {num_skip_insufficient_keypoints:,d}")
-        logger.info(f"minimum keypoints cutoff: {min_keypoints}")
+        logger.info(f"minimum keypoints cutoff: {self.min_keypoints}")
         logger.info(f"Num final dataset(keypoints annotation) size: {len(self._dataset):,d}")
 
     def _init_coco_info(self) -> None:
@@ -128,7 +133,7 @@ class CocoDataset(Dataset):
         return len(self._dataset)
 
     def __getitem__(self, idx: int)\
-        -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Dict]:
+        -> tuple[Tensor, Tensor, Tensor, Tensor, Dict]:
         sample = self.get_sample(idx)
         image_meta = self.get_image_meta(sample.image_id)
         image_path = image_meta.fpath
@@ -230,7 +235,7 @@ class CocoDataset(Dataset):
 
         return dst_keypoints, bbox, center
 
-    def _read_image(self, image_path: str) -> torch.Tensor:
+    def _read_image(self, image_path: str) -> Tensor:
         """
         torchvision.io.read_image() wrapper function
         to guarantee number of color channels to 3.
@@ -245,7 +250,7 @@ class CocoDataset(Dataset):
             raise ValueError("Invalid #color channel(={image.shape[0]}): {image_path}")
 
     def _generate_simcc_label(self, keypoints: KeyPoints)\
-        -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        -> tuple[Tensor, Tensor, Tensor]:
         target_weight = torch.zeros((self.num_keypoints, 1), dtype=torch.float32)
         target_weight[keypoints.get_vis() > 0] = 1.0
 

@@ -42,18 +42,10 @@ def train(config_fname: str) -> None:
     ])
 
     logger.info("Preapring training dataset")
-    tr_dataset = CocoDataset(anno_fname=cfg.DATA_TRAIN.ANNOTATION_FNAME,
-                             image_dir=cfg.DATA_TRAIN.IMAGE_DIR,
-                             nn_input_size=cfg.MODEL.INPUT_SIZE,
-                             data_aug_cfg=cfg.DATA_TRAIN.DATA_AUG,
-                             min_keypoints=cfg.DATA_COMMON.MIN_KEYPOINTS,
+    tr_dataset = CocoDataset(cfg, is_train_data=True,
                              transform=input_transform)
     logger.info("Preparing validation dataset")
-    val_dataset = CocoDataset(anno_fname=cfg.DATA_VAL.ANNOTATION_FNAME,
-                              image_dir=cfg.DATA_VAL.IMAGE_DIR,
-                              nn_input_size=cfg.MODEL.INPUT_SIZE,
-                              data_aug_cfg=cfg.DATA_VAL.DATA_AUG,
-                              min_keypoints=cfg.DATA_COMMON.MIN_KEYPOINTS,
+    val_dataset = CocoDataset(cfg, is_train_data=False,
                               transform=input_transform)
 
     logger.info("Preapring dataloader")

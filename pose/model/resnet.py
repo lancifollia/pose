@@ -1,25 +1,37 @@
 #!/usr/bin/env python3
 
-from torch import nn
+from typing import List, Optional, Type, Union
+
+import torch
+from einops import rearrange
+from loguru import logger
+from torch import nn, Tensor
 from yacs.config import CfgNode
 
 
 BN_MOMENTUM = 0.1
 
 
-def conv3x3(in_planes: int,
-            out_planes: int,
-            stride: int = 1
-            ) -> nn.Conv2d:
+def conv3x3(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
     """3x3 convolution with padding"""
-    return nn.Conv2d(in_planes, out_planes, kernel_size=3,
-                     stride=stride, padding=1, bias=False)
+    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=False)
+
+
+def conv1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
+    """1x1 convolution"""
+    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, padding=0, bias=False)
+
 
 
 class BasicBlock(nn.Module):
-    expansion = 1
+    expansion: int = 1
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None):
+    def __init__(self,
+                 inplanes: int,
+                 planes: int,
+                 stride: int = 1,
+                 downsample: Optional[nn.Module] = None,
+                 ) -> None:
         super(BasicBlock, self).__init__()
         self.conv1 = conv3x3(inplanes, planes, stride)
         self.bn1 = nn.BatchNorm2d(planes, momentum=BN_MOMENTUM)
@@ -29,8 +41,8 @@ class BasicBlock(nn.Module):
         self.downsample = downsample
         self.stride = stride
 
-    def forward(self, x):
-        residual = x
+    def forward(self, x: Tensor) -> Tensor:
+        identity = x
 
         out = self.conv1(x)
         out = self.bn1(out)
@@ -40,9 +52,52 @@ class BasicBlock(nn.Module):
         out = self.bn2(out)
 
         if self.downsample is not None:
-            residual = self.downsample(x)
+            identity = self.downsample(x)
 
-        out += residual
+        out += identity
+        out = self.relu(out)
+
+        return out
+
+
+class Bottleneck(nn.Module):
+    expansion: int = 4
+
+    def __init__(self,
+                 inplanes: int,
+                 planes: int,
+                 stride: int = 1,
+                 downsample: Optional[nn.Module] = None,
+                 ) -> None:
+        super(Bottleneck, self).__init__()
+        self.conv1 = conv1x1(inplanes, planes)
+        self.bn1 = nn.BatchNorm2d(planes, momentum=BN_MOMENTUM)
+        self.conv2 = conv3x3(inplanes, planes, stride)
+        self.bn2 = nn.BatchNorm2d(planes, momentum=BN_MOMENTUM)
+        self.conv3 = conv1x1(inplanes, planes * self.expansion)
+        self.bn3 = nn.BatchNorm2d(planes * self.expansion, momentum=BN_MOMENTUM)
+        self.relu = nn.ReLU(inplace=True)
+        self.downsample = downsample
+        self.stride = stride
+
+    def forward(self, x: Tensor) -> Tensor:
+        identity = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = self.relu(out)
+
+        out = self.conv3(out)
+        out = self.bn3(out)
+
+        if self.downsample is not None:
+            identity = self.downsample(x)
+
+        out += identity
         out = self.relu(out)
 
         return out
@@ -50,12 +105,19 @@ class BasicBlock(nn.Module):
 
 class PoseResNet(nn.Module):
     def __init__(self,
-                 block,
-                 layers
+                 block: Type[Union[BasicBlock, Bottleneck]],
+                 layers: List[int],
+                 cfg: CfgNode,
                  ) -> None:
         super(PoseResNet, self).__init__()
-        self.inplanes = 64
+        self.num_kp = cfg.DATA_COMMON.NUM_KEYPOINTS
+        self.num_channel_per_kp = cfg.MODEL.EXTRA.NUM_CHANNEL_PER_KP
+        self.final_conv_kernel_size = cfg.MODEL.EXTRA.FINAL_CONV_KERNEL_SIZE
+        self.resolution = Tensor(cfg.MODEL.INPUT_SIZE).type(torch.int32)
+        self.cc_size = self.resolution * cfg.MODEL.EXTRA.SIMCC_SPLIT_FACTOR
+        logger.info(f"coordinate classification size: {self.cc_size}")
 
+        self.inplanes = 64
         self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
         self.bn1 = nn.BatchNorm2d(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
@@ -65,26 +127,75 @@ class PoseResNet(nn.Module):
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
 
-        # TODO: final layer & y,x classification layer for each
+        self.final_layer = nn.Conv2d(
+            in_channels=self.inplanes,
+            out_channels=self.num_kp * self.num_channel_per_kp,
+            kernel_size=self.final_conv_kernel_size,
+            stride=1,
+            padding=1 if self.final_conv_kernel_size == 3 else 0
+        )
+
+        total_stride = 2 ** 5
+        final_layer_resolution = (self.resolution / total_stride).type(torch.int32)
+        fh, fw = map(int, final_layer_resolution)
+        logger.info(f"final layer resolution: h({fh}) w({fw})")
+        head_in_size = int(fh * fw * self.num_channel_per_kp)
+        logger.info(f"head-in size: {head_in_size}")
+        self.cc_head_y = nn.Linear(head_in_size, self.cc_size[0])
+        self.cc_head_x = nn.Linear(head_in_size, self.cc_size[1])
+
+    def _make_layer(self,
+                    block: Type[Union[BasicBlock, Bottleneck]],
+                    planes: int,
+                    blocks: int,
+                    stride: int = 1
+                    ) -> nn.Sequential:
+        downsample = None
+        if stride != 1 or self.inplanes != planes * block.expansion:
+            downsample = nn.Sequential(
+                conv1x1(self.inplanes, planes * block.expansion, stride),
+                nn.BatchNorm2d(planes * block.expansion, momentum=BN_MOMENTUM),
+            )
+
+        layers = []
+        layers.append(block(self.inplanes, planes, stride, downsample))
+        self.inplanes = planes * block.expansion
+        for i in range(1, blocks):
+            layers.append(block(self.inplanes, planes))
+
+        return nn.Sequential(*layers)
 
     def forward(self, x):
-        # TODO
-        return None
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
 
-    def _make_layer(self, block, planes, blocks, stride=1):
-        # TODO
-        return None
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+
+        x = self.final_layer(x)
+        # b: batch size
+        x = rearrange(x, 'b (k c) h w -> b k (c h w)',
+                      k=self.num_kp, c=self.num_channel_per_kp)
+
+        pred_y = self.cc_head_y(x)
+        pred_x = self.cc_head_x(x)
+        return pred_y, pred_x
 
 
-RESNET_SPEC = {
+RESNET_SPEC: dict[int, tuple[Type[Union[BasicBlock, Bottleneck]], List[int]]] = {
     18: (BasicBlock, [2, 2, 2, 2]),
-    # 34: (BasicBlock, [3, 4, 6, 3]),
-    # 50: (Bottleneck, [3, 4, 6, 3]),   -> TODO: Bottleneck
-    # 101: (Bottleneck, [3, 4, 23, 3]),
-    # 152: (Bottleneck, [3, 8, 36, 3])
+    34: (BasicBlock, [3, 4, 6, 3]),
+    50: (Bottleneck, [3, 4, 6, 3]),
+    101: (Bottleneck, [3, 4, 23, 3]),
+    152: (Bottleneck, [3, 8, 36, 3])
 }
+
 
 def get_model(cfg: CfgNode) -> nn.Module:
     block, layers = RESNET_SPEC[cfg.MODEL.EXTRA.NUM_RESNET_LAYERS]
-    model = PoseResNet(block, layers)
+    model = PoseResNet(block, layers, cfg)
     return model
