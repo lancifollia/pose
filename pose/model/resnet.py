@@ -185,6 +185,15 @@ class PoseResNet(nn.Module):
         pred_x = self.cc_head_x(x)
         return pred_y, pred_x
 
+    def init_weights(self) -> None:
+        logger.info("Init weights from normal distribution.")
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.normal_(m.weight, mean=0, std=0.001)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
 
 RESNET_SPEC: dict[int, tuple[Type[Union[BasicBlock, Bottleneck]], List[int]]] = {
     18: (BasicBlock, [2, 2, 2, 2]),
@@ -195,7 +204,9 @@ RESNET_SPEC: dict[int, tuple[Type[Union[BasicBlock, Bottleneck]], List[int]]] = 
 }
 
 
-def get_model(cfg: CfgNode) -> nn.Module:
+def get_model(cfg: CfgNode, need_init_weights: bool = False) -> nn.Module:
     block, layers = RESNET_SPEC[cfg.MODEL.EXTRA.NUM_RESNET_LAYERS]
     model = PoseResNet(block, layers, cfg)
+    if need_init_weights:
+        model.init_weights()
     return model

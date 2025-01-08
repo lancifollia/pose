@@ -13,6 +13,12 @@ _C.DATA_COMMON.NUM_KEYPOINTS = 17  # COCO dataset
 _C.DATA_COMMON.MIN_KEYPOINTS = 1
 
 
+"""Data Loader"""
+_C.DATA_LOADER = CN()
+_C.DATA_LOADER.BATCH_SIZE = 36
+_C.DATA_LOADER.NUM_WORKERS = 16
+_C.DATA_LOADER.USE_PIN_MEMORY = True
+
 
 """Training Data"""
 _C.DATA_TRAIN = CN()
@@ -43,10 +49,10 @@ _C.DATA_VAL.DATA_AUG = None
 
 """Model"""
 _C.MODEL = CN()
-_C.MODEL.NAME = None
+_C.MODEL.NAME = "resnet"
 # Neural network input image size. [height, width]
 _C.MODEL.INPUT_SIZE = [256, 192]
-
+_C.MODEL.LOSS_TYPE = "KLDiscretLoss"
 
 """Model.Extra"""
 _C.MODEL.EXTRA = CN()
@@ -62,15 +68,18 @@ _C.MODEL.EXTRA.NUM_CHANNEL_PER_KP = 28
 _C.MODEL.EXTRA.FINAL_CONV_KERNEL_SIZE = 1
 
 
-"""Model training"""
-_C.TRAINING = CN()
-_C.TRAINING.BATCH_SIZE = 120
-_C.TRAINING.NUM_GPU = 1
+"""Training"""
+_C.TRAIN = CN()
+_C.TRAIN.GPU_ID = 1
+_C.TRAIN.LR = 0.001
+_C.TRAIN.LR_FACTOR = 0.1
+_C.TRAIN.LR_STEP = [90, 120]
+_C.TRAIN.BEGIN_EPOCH = 0
+_C.TRAIN.END_EPOCH = 140
 
 
-"""Model validation"""
-_C.VALIDATION = CN()
-_C.VALIDATION.BATCH_SIZE = 120
+"""Validation"""
+_C.VALIDATE = CN()
 
 
 def get_cfg_defaults():
