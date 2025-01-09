@@ -3,10 +3,9 @@ Training script
 """
 import os
 import sys
-import time
 
 from loguru import logger
-from torch import optim, nn
+from torch import cuda, optim, nn
 from torch.utils.data import DataLoader
 from torchvision.transforms import Compose, Normalize
 from yacs.config import CfgNode
@@ -14,6 +13,7 @@ from yacs.config import CfgNode
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from pose.config import get_cfg_defaults
+from pose.core.function import train_simcc
 from pose.core.loss import KLDiscretLoss
 from pose.data.dataset import CocoDataset
 from pose.data.transforms import RescaleImgDiv255
@@ -25,7 +25,7 @@ logger.add(sys.stderr, level="INFO")
 
 def get_loss_function(loss_type: str) -> nn.Module:
     if loss_type == "KLDiscretLoss":
-        return KLDiscretLoss().cuda()
+        return KLDiscretLoss()
     else:
         raise ValueError(f"Invalid loss type: {loss_type}")
 
@@ -44,6 +44,8 @@ def train(config_fname: str) -> None:
     cfg.freeze()
     logger.info(f"Configurations:\n{cfg}")
 
+    cuda.set_device("cuda:0")
+
     # Prepare model parameter
     model = get_model(cfg, need_init_weights=True).cuda()
     logger.info(f"Model: {model}")
@@ -51,7 +53,7 @@ def train(config_fname: str) -> None:
     logger.info(f"Model param size: {total_param_size:,}")
 
     # Set loss function
-    criterion = get_loss_function(cfg.MODEL.LOSS_TYPE)
+    criterion = get_loss_function(cfg.MODEL.LOSS_TYPE).cuda()
     logger.info(f"Loss type:\n{criterion}")
 
     # Data loading
@@ -89,7 +91,10 @@ def train(config_fname: str) -> None:
         last_epoch=last_epoch
     )
 
-    # Iterate training epochs
+    begin_epoch = 0
+    for epoch in range(begin_epoch, cfg.TRAIN.END_EPOCH):
+        train_simcc(cfg, tr_dataloader, model, criterion, optimizer, epoch)
+        lr_scheduler.step()
 
     logger.info('Model training is complete')
 

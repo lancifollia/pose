@@ -176,7 +176,9 @@ class CocoDataset(Dataset):
             nn_input_image = copy.deepcopy(image)
 
         target_y, target_x, target_weight = self._generate_simcc_label(keypoints)
-        extra_info = {"image": image, "keypoints": keypoints}
+        extra_info = {"image": image,
+                      "keypoints": keypoints.get_kps(),
+                      "vis": keypoints.get_vis()}
 
         return nn_input_image, target_y, target_x, target_weight, extra_info
 

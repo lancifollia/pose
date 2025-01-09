@@ -10,7 +10,8 @@ class BBox(object):
     def __init__(self, y: int, x: int, h:int, w:int) -> None:
         """
         y: left upper y coordinate
-        x: left upper x coordinate
+        x: left upper x coo
+rdinate
         h: height of the bounding box
         w: widht of the bounding box
         """

@@ -11,9 +11,9 @@ class KLDiscretLoss(nn.Module):
         self.kl_div_loss= nn.KLDivLoss(reduction='none')
 
 
-    def criterion(self, dec_outs: Tensor, labels: Tensor) -> Tensor:
-        scores = self.log_softmax(dec_outs)
-        loss = torch.mean(self.kl_div_loss(scores, labels), dim=1)
+    def criterion(self, output: Tensor, target: Tensor) -> Tensor:
+        scores = self.log_softmax(output)
+        loss = torch.mean(self.kl_div_loss(scores, target), dim=1)
         return loss
 
     def forward(self,
@@ -22,7 +22,7 @@ class KLDiscretLoss(nn.Module):
                 target_weight: Tensor
                 ) -> Tensor:
         num_kp = output_y.shape[1]  # (b, k, (c h w))
-        loss = torch.tensor(0.)
+        loss = torch.tensor(0.).cuda()
 
         for idx in range(num_kp):
             _output_y = output_y[:,idx].squeeze()
