@@ -37,11 +37,11 @@ class DataSample(NamedTuple):
 class CocoDataset(Dataset):
     def __init__(self,
                  cfg: CfgNode,
-                 is_train_data: bool,
+                 is_train: bool,
                  transform: Optional[Callable[[Tensor], Tensor]] = None
                  ) -> None:
         self._init_coco_info()
-        data_cfg = cfg.DATA_TRAIN if is_train_data else cfg.DATA_VAL
+        data_cfg = cfg.DATA_TRAIN if is_train else cfg.DATA_VAL
 
         anno_fname = data_cfg.ANNOTATION_FNAME
         with open(anno_fname) as _anno_fin:
@@ -147,7 +147,7 @@ class CocoDataset(Dataset):
         scale = 1.25  # default scale
         if self.do_data_augment:
             if np.random.random() < self.half_body_proba \
-               and keypoints.num_visible() > self.half_body_min_kps:
+               and keypoints.num_upperbody_visible() > self.half_body_min_kps:
                 keypoints, bbox, center = self._half_body_transform(keypoints, image_size)
                 _, _, bh, bw = bbox.get_yxhw()
                 logger.debug("the image is half-body transformed.")
@@ -197,25 +197,9 @@ class CocoDataset(Dataset):
                              keypoints: KeyPoints,
                              image_size: list[int]
                              ) -> tuple[KeyPoints, BBox, list[int]]:
-        min_kps = 2
+        logger.debug("half(upper) body transform")
 
-        if keypoints.num_upperbody_visible() < min_kps:
-            do_upperbody_transf = False
-        elif keypoints.num_lowerbody_visible() < min_kps:
-            do_upperbody_transf = True
-        else:
-            if np.random.randn() < 0.5:
-                do_upperbody_transf = True
-            else:
-                do_upperbody_transf = False
-
-        transf_part = "upper" if do_upperbody_transf else "lower"
-        logger.debug(f"half body transform part: {transf_part}")
-
-        if do_upperbody_transf is True:
-            dst_keypoints = keypoints.remove_lowerbody_kps()
-        else:
-            dst_keypoints = keypoints.remove_upperbody_kps()
+        dst_keypoints = keypoints.remove_lowerbody_kps()
         logger.debug(f"visible kps: {dst_keypoints.num_visible()}")
 
         iw, ih = image_size

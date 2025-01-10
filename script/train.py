@@ -63,10 +63,10 @@ def train(config_fname: str) -> None:
                   std=[0.229, 0.224, 0.225])
     ])
     logger.info("Preapring training dataset")
-    tr_dataset = CocoDataset(cfg, is_train_data=True,
+    tr_dataset = CocoDataset(cfg, is_train=True,
                              transform=input_transform)
     logger.info("Preparing validation dataset")
-    val_dataset = CocoDataset(cfg, is_train_data=False,
+    val_dataset = CocoDataset(cfg, is_train=False,
                               transform=input_transform)
     logger.info("Preapring dataloader")
     tr_dataloader = DataLoader(tr_dataset,

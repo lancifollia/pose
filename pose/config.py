@@ -37,7 +37,7 @@ _C.DATA_TRAIN.DATA_AUG.SCALE_FACTOR = 0.3
 # Half body transforming trigering probability
 _C.DATA_TRAIN.DATA_AUG.HALF_BODY_PROBA = 0.3
 # Half body transforming trigering minimum number of keypoints
-_C.DATA_TRAIN.DATA_AUG.HALF_BODY_MIN_KEYPOINTS = 8
+_C.DATA_TRAIN.DATA_AUG.HALF_BODY_MIN_KEYPOINTS = 6
 
 
 """Validation Data"""
