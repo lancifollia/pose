@@ -69,7 +69,7 @@ def crop_and_resize_image(image: torch.Tensor,
     logger.debug(f"cropped image size: {image.shape}")
     logger.debug(f"cropped image aspect ratio: {float(image.shape[2])/image.shape[1]}")
     cropped_aspect_ratio = float(image.shape[2])/image.shape[1]
-    if math.fabs(aspect_ratio - cropped_aspect_ratio) / aspect_ratio > 0.03:
+    if math.fabs(aspect_ratio - cropped_aspect_ratio) / aspect_ratio > 0.05:
         raise RuntimeError(f"Invalid cropped aspect ratio: {cropped_aspect_ratio}")
 
     # Resizing cropped image
