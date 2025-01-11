@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+import torch
 from loguru import logger
 from torch import optim, nn
 from torch.utils.data import DataLoader
@@ -32,5 +32,6 @@ def train_simcc(cfg: CfgNode,
         optimizer.zero_grad()
 
         if i % cfg.TRAIN.LOGGING_FREQ == 0:
-            msg = f"Epoch[{epoch}][{i}/{len(tr_dataloader)}] Loss {loss:.5f}"
+            logloss = torch.log(loss)
+            msg = f"Epoch[{epoch}] Batch[{i}/{len(tr_dataloader)}] logloss {logloss:.5f}"
             logger.info(msg)

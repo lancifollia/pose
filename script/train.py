@@ -93,6 +93,7 @@ def train(config_fname: str) -> None:
 
     begin_epoch = 0
     for epoch in range(begin_epoch, cfg.TRAIN.END_EPOCH):
+        logger.info(f"{'=-'*5} Epoch[{epoch}] started {'-='*5}")
         train_simcc(cfg, tr_dataloader, model, criterion, optimizer, epoch)
         lr_scheduler.step()
 
