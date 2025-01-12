@@ -7,16 +7,15 @@ from torch import nn, Tensor
 class KLDiscretLoss(nn.Module):
     def __init__(self) -> None:
         super(KLDiscretLoss, self).__init__()
-        # TODO: Is it right?
         self.log_softmax = nn.LogSoftmax(dim=1)   # (b, logits)
-        # self.softmax = nn.Softmax(dim=1)   # (b, logits)
-        self.kl_div_loss= nn.KLDivLoss(reduction='none')
-
+        self.kl_div_loss= nn.KLDivLoss(reduction="none", log_target=False)
 
     def criterion(self, output: Tensor, target: Tensor) -> Tensor:
-        # TODO: Is it right?
+        """
+        The target tensor is converted to log scale inside the kl_div_loss() method.
+        See more: https://pytorch.org/docs/stable/generated/torch.nn.KLDivLoss.html
+        """
         scores = self.log_softmax(output)
-        # scores = self.softmax(output)
         loss = torch.mean(self.kl_div_loss(scores, target), dim=1)
         return loss
 
@@ -29,11 +28,12 @@ class KLDiscretLoss(nn.Module):
         loss = torch.tensor(0.).cuda()
 
         for idx in range(num_kp):
-            _output_y = output_y[:,idx].squeeze()
-            _output_x = output_x[:,idx].squeeze()
-            _target_y = target_y[:,idx].squeeze()
-            _target_x = target_x[:,idx].squeeze()
-            weight = target_weight[:,idx].squeeze()
-            loss += (self.criterion(_output_y, _target_y).mul(weight).mean())
-            loss += (self.criterion(_output_x, _target_x).mul(weight).mean())
+            _output_y = output_y[:,idx]
+            _output_x = output_x[:,idx]
+            _target_y = target_y[:,idx]
+            _target_x = target_x[:,idx]
+            weight = target_weight[:,idx].squeeze()  # (b, k, 1) -> (b, k)
+
+            loss += self.criterion(_output_y, _target_y).mul(weight).sum() * weight.sum()**-1
+            loss += self.criterion(_output_x, _target_x).mul(weight).sum() * weight.sum()**-1
         return loss / num_kp
