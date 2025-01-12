@@ -34,6 +34,7 @@ class KLDiscretLoss(nn.Module):
             _target_x = target_x[:,idx]
             weight = target_weight[:,idx].squeeze()  # (b, k, 1) -> (b, k)
 
+            # Using "batch mean" instead of "mean".
             loss += self.criterion(_output_y, _target_y).mul(weight).sum() * weight.sum()**-1
             loss += self.criterion(_output_x, _target_x).mul(weight).sum() * weight.sum()**-1
         return loss / num_kp
