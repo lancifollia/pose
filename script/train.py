@@ -13,7 +13,7 @@ from yacs.config import CfgNode
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from pose.config import get_cfg_defaults
-from pose.core.function import train_simcc
+from pose.core.function import train_simcc, validate_simcc
 from pose.core.loss import KLDiscretLoss
 from pose.data.dataset import CocoDataset
 from pose.data.transforms import RescaleImgDiv255
@@ -82,19 +82,17 @@ def train(config_fname: str) -> None:
                                 pin_memory=cfg.DATA_LOADER.USE_PIN_MEMORY,
                                 )
 
-    last_epoch = -1
-
     optimizer = optim.Adam(model.parameters(), lr=cfg.TRAIN.LR)
     logger.info(f"Optimizer:\n{optimizer}")
     lr_scheduler = optim.lr_scheduler.MultiStepLR(
-        optimizer, cfg.TRAIN.LR_STEP, cfg.TRAIN.LR_FACTOR,
-        last_epoch=last_epoch
+        optimizer, cfg.TRAIN.LR_STEP, cfg.TRAIN.LR_FACTOR, last_epoch=-1
     )
 
     begin_epoch = 0
     for epoch in range(begin_epoch, cfg.TRAIN.END_EPOCH):
         logger.info(f"{'=-'*5} Epoch[{epoch}] started {'-='*5}")
         train_simcc(cfg, tr_dataloader, model, criterion, optimizer, epoch)
+        validate_simcc(cfg, val_dataloader, val_dataset, model, criterion, epoch)
         lr_scheduler.step()
 
     logger.info('Model training is complete')

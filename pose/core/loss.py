@@ -7,12 +7,16 @@ from torch import nn, Tensor
 class KLDiscretLoss(nn.Module):
     def __init__(self) -> None:
         super(KLDiscretLoss, self).__init__()
-        self.log_softmax = nn.LogSoftmax(dim=1)   # (b, logits)
+        # TODO: Is it right?
+        # self.log_softmax = nn.LogSoftmax(dim=1)   # (b, logits)
+        self.softmax = nn.Softmax(dim=1)   # (b, logits)
         self.kl_div_loss= nn.KLDivLoss(reduction='none')
 
 
     def criterion(self, output: Tensor, target: Tensor) -> Tensor:
-        scores = self.log_softmax(output)
+        # TODO: Is it right?
+        # scores = self.log_softmax(output)
+        scores = self.softmax(output)
         loss = torch.mean(self.kl_div_loss(scores, target), dim=1)
         return loss
 

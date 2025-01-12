@@ -176,11 +176,11 @@ class CocoDataset(Dataset):
             nn_input_image = copy.deepcopy(image)
 
         target_y, target_x, target_weight = self._generate_simcc_label(keypoints)
-        extra_info = {"image": image,
-                      "keypoints": keypoints.get_kps(),
-                      "vis": keypoints.get_vis()}
+        meta = {"image": image,
+                "keypoints": keypoints.get_kps(),
+                "vis": keypoints.get_vis()}
 
-        return nn_input_image, target_y, target_x, target_weight, extra_info
+        return nn_input_image, target_y, target_x, target_weight, meta
 
     def _get_rotate_factor(self, image_width: int, center_x: int) -> float:
         """Retrict rotating factor when side margin is small."""
