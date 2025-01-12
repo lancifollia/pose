@@ -3,6 +3,7 @@ Training script
 """
 import os
 import sys
+import time
 
 from loguru import logger
 from torch import cuda, optim, nn
@@ -77,7 +78,7 @@ def train(config_fname: str) -> None:
                                )
     val_dataloader = DataLoader(val_dataset,
                                 batch_size=cfg.DATA_LOADER.BATCH_SIZE,
-                                shuffle=True,
+                                shuffle=False,
                                 num_workers=cfg.DATA_LOADER.NUM_WORKERS,
                                 pin_memory=cfg.DATA_LOADER.USE_PIN_MEMORY,
                                 )
@@ -90,10 +91,12 @@ def train(config_fname: str) -> None:
 
     begin_epoch = 0
     for epoch in range(begin_epoch, cfg.TRAIN.END_EPOCH):
+        start_ts = time.time()
         logger.info(f"{'=-'*5} Epoch[{epoch}] started {'-='*5}")
         train_simcc(cfg, tr_dataloader, model, criterion, optimizer, epoch)
         validate_simcc(cfg, val_dataloader, val_dataset, model, criterion, epoch)
         lr_scheduler.step()
+        logger.info(f"Epoch[{epoch}] complete. Elapsed at {(time.time() - start_ts)/60:.2f} mins")
 
     logger.info('Model training is complete')
 
