@@ -5,6 +5,7 @@ Dataset modules
 import copy
 import math
 import os
+from collections import OrderedDict
 from collections.abc import Callable
 from typing import Dict, Optional, NamedTuple
 
@@ -13,6 +14,8 @@ import orjson
 import torch
 import torchvision
 from loguru import logger
+from pycocotools.coco import COCO
+from pycocotools.cocoeval import COCOeval
 from torch import Tensor
 from torch.utils.data import Dataset
 from yacs.config import CfgNode
@@ -43,10 +46,10 @@ class CocoDataset(Dataset):
         self._init_coco_info()
         data_cfg = cfg.DATA_TRAIN if is_train else cfg.DATA_VAL
 
-        anno_fname = data_cfg.ANNOTATION_FNAME
-        with open(anno_fname) as _anno_fin:
+        self.anno_fname = data_cfg.ANNOTATION_FNAME
+        with open(self.anno_fname) as _anno_fin:
             anno = orjson.loads(_anno_fin.read())
-        logger.info(f"Annotation fname: {anno_fname}")
+        logger.info(f"Annotation fname: {self.anno_fname}")
         self.image_dir = data_cfg.IMAGE_DIR
         logger.info(f"Image file director: {self.image_dir}")
 
@@ -288,3 +291,41 @@ class CocoDataset(Dataset):
 
     def keypoints_idx2name(self, keypoint_idx: int) -> str:
         return self._keypoints_idx2name[keypoint_idx]
+
+    def evaluate(self, preds) -> tuple[OrderedDict[str,float], float]:
+        # TODO: type hint!
+
+        """Evaluating keypoints prediction quality using ground truth bbox."""
+        pred_dump = []
+        eval_target_image_ids = set()
+        for image_id, pred in preds:
+            eval_target_image_ids.add(image_id)
+            # (17,2) pred -> (17,3)
+            kp = torch.zeros(17, 3)
+            kp[:,0:2] = pred
+            # These are dummy visibility score. cocoapi evaluation ignores pred vis score.
+            kp[:,2] = (kp.sum(axis=1)>0).float()
+            v = {"image_id": image_id,
+                 "category_id": 1,
+                 "score": 1.0,
+                 "keypoints": kp}
+            pred_dump.append(v)
+
+        pred_dump_fname = ".pred_dump.tmp"
+        with open(pred_dump_fname, 'w') as fout:
+            fout.write(orjson.dumps(pred_dump))
+        coco_gt = COCO(self.anno_fname)
+        coco_dt = coco_gt.loadRes(pred_dump_fname)
+        coco_eval = COCOeval(coco_gt, coco_dt, "keypoints")
+        coco_eval.params.imgIds = eval_target_image_ids
+        coco_eval.evaluate()
+        coco_eval.accumulate()
+        coco_eval.summarize()
+
+        stats_names = ['AP', 'Ap .5', 'AP .75', 'AP (M)', 'AP (L)',
+                       'AR', 'AR .5', 'AR .75', 'AR (M)', 'AR (L)']
+        eval_stats = OrderedDict()
+        for i, name in enumerate(stats_names):
+            eval_stats[name] = float(coco_eval.stats[i])
+
+        return (eval_stats, eval_stats['AP'])
