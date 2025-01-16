@@ -180,6 +180,8 @@ class CocoDataset(Dataset):
 
         target_y, target_x, target_weight = self._generate_simcc_label(keypoints)
         meta = {"image": image,
+                "image_id": torch.tensor(sample.image_id),  # image_id: int type
+                "bbox": torch.tensor(bbox.get_yxhw()),
                 "keypoints": keypoints.get_kps(),
                 "vis": keypoints.get_vis()}
 
@@ -292,32 +294,39 @@ class CocoDataset(Dataset):
     def keypoints_idx2name(self, keypoint_idx: int) -> str:
         return self._keypoints_idx2name[keypoint_idx]
 
-    def evaluate(self, preds) -> tuple[OrderedDict[str,float], float]:
-        # TODO: type hint!
-
+    def evaluate(self,
+                 preds_per_image: dict[int, list[torch.Tensor]],
+                 yx2xy: bool = True
+                 ) -> tuple[OrderedDict[str,float], float]:
         """Evaluating keypoints prediction quality using ground truth bbox."""
         pred_dump = []
         eval_target_image_ids = set()
-        for image_id, pred in preds:
+        for image_id, preds in preds_per_image.items():
             eval_target_image_ids.add(image_id)
-            # (17,2) pred -> (17,3)
-            kp = torch.zeros(17, 3)
-            kp[:,0:2] = pred
-            # These are dummy visibility score. cocoapi evaluation ignores pred vis score.
-            kp[:,2] = (kp.sum(axis=1)>0).float()
-            v = {"image_id": image_id,
-                 "category_id": 1,
-                 "score": 1.0,
-                 "keypoints": kp}
-            pred_dump.append(v)
+            for pred in preds:
+                # (17,2) pred -> (17,3)
+                kp = torch.zeros(17, 3)
+                # cocoapi uses xy coordinates.
+                if yx2xy:
+                    kp[:,0] = pred[:,1]
+                    kp[:,1] = pred[:,0]
+                else:
+                    kp[:,0:2] = pred
+                # These are dummy visibility score. cocoapi evaluation ignores pred vis score.
+                kp[:,2] = (kp.sum(dim=1)>0).int()
+                v = {"image_id": image_id,
+                    "category_id": 1,     # category==1 -> person
+                    "score": 1.0,         # dummy value
+                    "keypoints": kp.flatten().tolist()}
+                pred_dump.append(v)
 
         pred_dump_fname = ".pred_dump.tmp"
-        with open(pred_dump_fname, 'w') as fout:
+        with open(pred_dump_fname, 'wb') as fout:
             fout.write(orjson.dumps(pred_dump))
         coco_gt = COCO(self.anno_fname)
         coco_dt = coco_gt.loadRes(pred_dump_fname)
         coco_eval = COCOeval(coco_gt, coco_dt, "keypoints")
-        coco_eval.params.imgIds = eval_target_image_ids
+        coco_eval.params.imgIds = list(eval_target_image_ids)
         coco_eval.evaluate()
         coco_eval.accumulate()
         coco_eval.summarize()
@@ -328,4 +337,7 @@ class CocoDataset(Dataset):
         for i, name in enumerate(stats_names):
             eval_stats[name] = float(coco_eval.stats[i])
 
-        return (eval_stats, eval_stats['AP'])
+        if os.path.exists(pred_dump_fname):
+            os.remove(pred_dump_fname)
+
+        return eval_stats, eval_stats['AP']

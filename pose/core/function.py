@@ -4,8 +4,11 @@ import time
 import torch
 from loguru import logger
 from torch import optim, nn
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 from yacs.config import CfgNode
+
+from pose.data.dataset import CocoDataset
+from pose.data.transforms import transform_bbox_pred_to_image_pred
 
 
 class AverageMeter(object):
@@ -74,22 +77,28 @@ def train_simcc(cfg: CfgNode,
 
 def validate_simcc(cfg: CfgNode,
                    val_dataloader: DataLoader,
-                   val_dataset: Dataset,
+                   val_dataset: CocoDataset,
                    model: nn.Module,
                    criterion: nn.Module,
                    epoch: int
-                   ) -> None:
+                   ) -> float:
 
     batch_time = AverageMeter()
     losses = AverageMeter()
 
+    pred_bbox_size = cfg.MODEL.INPUT_SIZE
+    num_kp = cfg.DATA_COMMON.NUM_KEYPOINTS
+    simcc_split_factor = cfg.MODEL.EXTRA.SIMCC_SPLIT_FACTOR
+
     # switch to evaluation mode
     model.eval()
+    preds_per_image: dict[int, list[torch.Tensor]] = {}
 
     with torch.no_grad():
         start_ts = time.time()
         for i, (input, target_y, target_x, target_weight, meta) in enumerate(val_dataloader):
             input = input.cuda(non_blocking=True)
+
             target_y = target_y.cuda(non_blocking=True)
             target_x = target_x.cuda(non_blocking=True)
             target_weight = target_weight.cuda(non_blocking=True).float()
@@ -100,15 +109,37 @@ def validate_simcc(cfg: CfgNode,
 
             loss = criterion(output_y, output_x, target_y, target_x, target_weight)
 
-            losses.update(loss.item(), input.shape[0])
-
+            losses.update(loss.item(), input.size(0))
             batch_time.update(time.time() - start_ts)
-            start_ts = time.time()
 
-            # TODO: Calculate average precision by COCO dataset evaluation metric.
+            # TODO: need to implement confidence based cutoff
+            _, preds_y = output_y.max(2, keepdim=True)
+            _, preds_x = output_x.max(2, keepdim=True)
+
+            kps = torch.zeros([input.size(0), num_kp, 2], dtype=torch.int)  # 2: (y,x)
+            kps[:,:,0] = torch.squeeze(torch.true_divide(preds_y, simcc_split_factor)).int()
+            kps[:,:,1] = torch.squeeze(torch.true_divide(preds_x, simcc_split_factor)).int()
+            real_bboxes = meta["bbox"]
+            image_ids = meta["image_id"]
+            for b_idx in range(input.size(0)):
+                image_id = int(image_ids[b_idx])
+                preds_per_image.setdefault(image_id, [])
+                final_pred = transform_bbox_pred_to_image_pred(kps[b_idx], real_bboxes[b_idx], pred_bbox_size)
+                preds_per_image[image_id].append(final_pred)
 
             if i % cfg.VALIDATE.LOGGING_FREQ == 0 or i == len(val_dataloader) - 1:
                 msg = f"Validation: [{i}/{len(val_dataloader) - 1}] " \
                       f"Loss {losses.val:.4e}({losses.avg:.4e})  "\
                       f"Time {batch_time.val:.2f}({batch_time.avg:.2f})"
                 logger.info(msg)
+            start_ts = time.time()
+
+        logger.info(f"AP evaluation target images: {len(preds_per_image):,}")
+        eval_stats, perf_indicator = val_dataset.evaluate(preds_per_image)
+
+        logger.info(", ".join(f"{_m}: {eval_stats[_m]:.4f}"
+                              for _m in ['AP', 'Ap .5', 'AP .75', 'AP (M)', 'AP (L)']))
+        logger.info(", ".join(f"{_m}: {eval_stats[_m]:.4f}"
+                              for _m in ['AR', 'AR .5', 'AR .75', 'AR (M)', 'AR (L)']))
+
+        return perf_indicator

@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 import math
-import os
-import sys
 
 import torch
 from loguru import logger
 from torchvision.transforms.v2 import InterpolationMode
 from torchvision.transforms.v2.functional import affine, resize
 
-sys.path.insert(0, os.path.dirname(__file__))
 from pose.data.datatype import BBox
 
 
@@ -77,3 +74,16 @@ def crop_and_resize_image(image: torch.Tensor,
                    interpolation=InterpolationMode.BILINEAR)
 
     return image, new_bbox
+
+
+def transform_bbox_pred_to_image_pred(kp: torch.Tensor,         # (17,2(=y,x))
+                                      real_bbox: list[int],     # (y,x,h,w)
+                                      pred_bbox_size: list[int] # (h,w)
+                                      ) -> torch.Tensor:
+    ry, rx, rh, rw = real_bbox
+    ph, pw = pred_bbox_size
+    kp[:,0] = kp[:,0] * ph**-1 * rh
+    kp[:,1] = kp[:,1] * pw**-1 * rw
+    kp[kp.sum(dim=1)>0,0] += ry
+    kp[kp.sum(dim=1)>0,1] += rx
+    return kp

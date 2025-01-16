@@ -28,8 +28,8 @@ class BBox(object):
     def _to_string(self) -> str:
         return f"y({self.y}) x({self.x}) h({self.h}) w({self.w})"
 
-    def get_yxhw(self) -> tuple[int, int, int, int]:
-        return self.y, self.x, self.h, self.w
+    def get_yxhw(self) -> list[int]:
+        return [self.y, self.x, self.h, self.w]
 
 
 class KeyPoints(object):
