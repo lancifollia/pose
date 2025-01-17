@@ -5,10 +5,14 @@ from torch import nn, Tensor
 
 
 class KLDiscretLoss(nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, reduction: str = "mean") -> None:
         super(KLDiscretLoss, self).__init__()
         self.log_softmax = nn.LogSoftmax(dim=1)   # (b, logits)
         self.kl_div_loss= nn.KLDivLoss(reduction="none", log_target=False)
+        if reduction not in ["mean", "weighted_mean"]:
+            raise ValueError(f"Invalid reduction type: {reduction}")
+        else:
+            self.reduction = reduction
 
     def criterion(self, output: Tensor, target: Tensor) -> Tensor:
         """
@@ -34,7 +38,13 @@ class KLDiscretLoss(nn.Module):
             _target_x = target_x[:,idx]
             weight = target_weight[:,idx].squeeze()  # (b, k, 1) -> (b, k)
 
-            # Using "batch mean" instead of "mean".
-            loss += self.criterion(_output_y, _target_y).mul(weight).sum() * weight.sum()**-1
-            loss += self.criterion(_output_x, _target_x).mul(weight).sum() * weight.sum()**-1
+            if self.reduction == "mean":
+                loss += self.criterion(_output_y, _target_y).mul(weight).mean()
+                loss += self.criterion(_output_x, _target_x).mul(weight).mean()
+            elif self.reduction == "weighted_mean":
+                loss += self.criterion(_output_y, _target_y).mul(weight).sum() * weight.sum()**-1
+                loss += self.criterion(_output_x, _target_x).mul(weight).sum() * weight.sum()**-1
+            else:
+                raise ValueError(f"Invalid reduction type: {self.reduction}")
+
         return loss / num_kp
