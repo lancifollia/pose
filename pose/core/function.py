@@ -62,7 +62,7 @@ def train_simcc(cfg: CfgNode,
         optimizer.step()
         optimizer.zero_grad()
 
-        losses.update(loss.item(), input.shape[0])
+        losses.update(loss.item(), input.size(0))
         batch_time.update(time.time() - start_ts)
         start_ts = time.time()
 
@@ -98,19 +98,19 @@ def validate_simcc(cfg: CfgNode,
         start_ts = time.time()
         for i, (input, target_y, target_x, target_weight, meta) in enumerate(val_dataloader):
             input = input.cuda(non_blocking=True)
-
             target_y = target_y.cuda(non_blocking=True)
             target_x = target_x.cuda(non_blocking=True)
             target_weight = target_weight.cuda(non_blocking=True).float()
 
             output_y, output_x = model(input)
-            output_y = nn.functional.softmax(output_y, dim=2)  # (b, k, logits)
-            output_x = nn.functional.softmax(output_x, dim=2)  # (b, k, logits)
 
             loss = criterion(output_y, output_x, target_y, target_x, target_weight)
 
             losses.update(loss.item(), input.size(0))
             batch_time.update(time.time() - start_ts)
+
+            output_y = nn.functional.softmax(output_y, dim=2)  # (b, k, logits)
+            output_x = nn.functional.softmax(output_x, dim=2)  # (b, k, logits)
 
             # TODO: need to implement confidence based cutoff
             _, preds_y = output_y.max(2, keepdim=True)
