@@ -7,6 +7,7 @@ import math
 import os
 from collections import OrderedDict
 from collections.abc import Callable
+from contextlib import redirect_stdout
 from typing import Dict, Optional, NamedTuple
 
 import numpy as np
@@ -323,13 +324,14 @@ class CocoDataset(Dataset):
         pred_dump_fname = ".pred_dump.tmp"
         with open(pred_dump_fname, 'wb') as fout:
             fout.write(orjson.dumps(pred_dump))
-        coco_gt = COCO(self.anno_fname)
-        coco_dt = coco_gt.loadRes(pred_dump_fname)
-        coco_eval = COCOeval(coco_gt, coco_dt, "keypoints")
-        coco_eval.params.imgIds = list(eval_target_image_ids)
-        coco_eval.evaluate()
-        coco_eval.accumulate()
-        coco_eval.summarize()
+        with redirect_stdout(None):  # mute the cocoapi internal print methods.
+            coco_gt = COCO(self.anno_fname)
+            coco_dt = coco_gt.loadRes(pred_dump_fname)
+            coco_eval = COCOeval(coco_gt, coco_dt, "keypoints")
+            coco_eval.params.imgIds = list(eval_target_image_ids)
+            coco_eval.evaluate()
+            coco_eval.accumulate()
+            coco_eval.summarize()
 
         stats_names = ['AP', 'Ap .5', 'AP .75', 'AP (M)', 'AP (L)',
                        'AR', 'AR .5', 'AR .75', 'AR (M)', 'AR (L)']
