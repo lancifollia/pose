@@ -8,6 +8,7 @@ import os
 from collections import OrderedDict
 from collections.abc import Callable
 from contextlib import redirect_stdout
+from pathlib import Path
 from typing import Dict, Optional, NamedTuple
 
 import numpy as np
@@ -300,16 +301,18 @@ class CocoDataset(Dataset):
 
     def evaluate(self,
                  preds_per_image: dict[int, list[torch.Tensor]],
+                 epoch: int,
                  yx2xy: bool = True
                  ) -> tuple[OrderedDict[str,float], float]:
         """Calculate average precision using ground truth bbox."""
         pred_dump = []
         eval_target_image_ids = set()
+
         for image_id, preds in preds_per_image.items():
             eval_target_image_ids.add(image_id)
             for pred in preds:
                 # (17,2) pred -> (17,3)
-                kp = torch.zeros(17, 3)
+                kp = torch.zeros(17, 3, dtype=torch.int)
                 # cocoapi uses xy coordinates.
                 if yx2xy:
                     kp[:,0] = pred[:,1]
@@ -319,14 +322,17 @@ class CocoDataset(Dataset):
                 # These are dummy visibility score. cocoapi evaluation ignores pred vis score.
                 kp[:,2] = (kp.sum(dim=1)>0).int()
                 v = {"image_id": image_id,
-                    "category_id": 1,     # category==1 -> person
-                    "score": 1.0,         # dummy value
-                    "keypoints": kp.flatten().tolist()}
+                     "category_id": 1,     # category==1 -> person
+                     "score": 1.0,         # dummy value
+                     "keypoints": kp.flatten().tolist()}
                 pred_dump.append(v)
 
-        pred_dump_fname = ".pred_dump.tmp"
+        dump_dir = ".pred_dumps"
+        Path(dump_dir).mkdir(parents=True, exist_ok=True)
+        pred_dump_fname = f"{dump_dir}/pred_dump_epoch{epoch}"
         with open(pred_dump_fname, 'wb') as fout:
             fout.write(orjson.dumps(pred_dump))
+        logger.info(f"Dumps validation data prediction results: {pred_dump_fname}")
         with redirect_stdout(None):  # mute the cocoapi internal print methods.
             coco_gt = COCO(self.anno_fname)
             coco_dt = coco_gt.loadRes(pred_dump_fname)
@@ -336,13 +342,13 @@ class CocoDataset(Dataset):
             coco_eval.accumulate()
             coco_eval.summarize()
 
-        stats_names = ['AP', 'Ap .5', 'AP .75', 'AP (M)', 'AP (L)',
+        stats_names = ['AP', 'AP .5', 'AP .75', 'AP (M)', 'AP (L)',
                        'AR', 'AR .5', 'AR .75', 'AR (M)', 'AR (L)']
         eval_stats = OrderedDict()
         for i, name in enumerate(stats_names):
             eval_stats[name] = float(coco_eval.stats[i])
 
-        if os.path.exists(pred_dump_fname):
-            os.remove(pred_dump_fname)
+        # if os.path.exists(pred_dump_fname):
+        #    os.remove(pred_dump_fname)
 
         return eval_stats, eval_stats['AP']

@@ -135,10 +135,10 @@ def validate_simcc(cfg: CfgNode,
             start_ts = time.time()
 
         logger.info(f"AP evaluation target images: {len(preds_per_image):,}")
-        eval_stats, perf_indicator = val_dataset.evaluate(preds_per_image)
+        eval_stats, perf_indicator = val_dataset.evaluate(preds_per_image, epoch)
 
         logger.info(", ".join(f"{_m}: {eval_stats[_m]:.4f}"
-                              for _m in ['AP', 'Ap .5', 'AP .75', 'AP (M)', 'AP (L)']))
+                              for _m in ['AP', 'AP .5', 'AP .75', 'AP (M)', 'AP (L)']))
         logger.info(", ".join(f"{_m}: {eval_stats[_m]:.4f}"
                               for _m in ['AR', 'AR .5', 'AR .75', 'AR (M)', 'AR (L)']))
 

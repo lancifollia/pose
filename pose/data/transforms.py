@@ -80,10 +80,11 @@ def transform_bbox_pred_to_image_pred(kp: torch.Tensor,         # (17,2(=y,x))
                                       real_bbox: list[int],     # (y,x,h,w)
                                       pred_bbox_size: list[int] # (h,w)
                                       ) -> torch.Tensor:
+    ret = torch.zeros_like(kp)
     ry, rx, rh, rw = real_bbox
     ph, pw = pred_bbox_size
-    kp[:,0] = kp[:,0] * ph**-1 * rh
-    kp[:,1] = kp[:,1] * pw**-1 * rw
-    kp[kp.sum(dim=1)>0,0] += ry
-    kp[kp.sum(dim=1)>0,1] += rx
-    return kp
+    ret[:,0] = kp[:,0] * ph**-1 * rh
+    ret[:,1] = kp[:,1] * pw**-1 * rw
+    ret[ret.sum(dim=1)>0,0] += ry
+    ret[ret.sum(dim=1)>0,1] += rx
+    return ret
