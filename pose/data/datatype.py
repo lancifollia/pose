@@ -54,7 +54,8 @@ class KeyPoints(object):
             self._vis = coco_kp[:,2]
             self._vis_level = 2  # default visibility level
         else:
-            raise Exception(f"Invalid data format: {data_format}")
+            msg = f"Only COCO dataset format supported yet. Invalid data format: {data_format}"
+            raise Exception(msg)
 
     def is_ith_kp_visible(self, idx: int) -> bool:
         return bool(self._vis[idx] >= self._vis_level)
@@ -72,7 +73,8 @@ class KeyPoints(object):
             ret[:,1] = self._kp[:,0]
             return ret
         else:
-            raise ValueError(f"Invalid keypoint coordinate: {coord}")
+            msg = f"get_kps() expected coord to be one of 'yx', or 'xy' but found '{coord}'"
+            raise RuntimeError(msg)
 
     def get_vis(self) -> torch.Tensor:
         vis = copy.deepcopy(self._vis)

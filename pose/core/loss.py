@@ -10,7 +10,9 @@ class KLDiscretLoss(nn.Module):
         self.log_softmax = nn.LogSoftmax(dim=1)   # (b, logits)
         self.kl_div_loss= nn.KLDivLoss(reduction="none", log_target=False)
         if reduction not in ["mean", "weighted_mean"]:
-            raise ValueError(f"Invalid reduction type: {reduction}")
+            msg = "expected reduction to be one of 'mean', or 'weighted_mean' "\
+                  f"but found '{reduction}'"
+            raise RuntimeError(msg)
         else:
             self.reduction = reduction
 
@@ -45,6 +47,6 @@ class KLDiscretLoss(nn.Module):
                 loss += self.criterion(_output_y, _target_y).mul(weight).sum() * weight.sum()**-1
                 loss += self.criterion(_output_x, _target_x).mul(weight).sum() * weight.sum()**-1
             else:
-                raise ValueError(f"Invalid reduction type: {self.reduction}")
+                raise RuntimeError(f"Invalid reduction type: {self.reduction}")
 
         return loss / num_kp

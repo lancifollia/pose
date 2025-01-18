@@ -239,7 +239,10 @@ class CocoDataset(Dataset):
             # https://discuss.pytorch.org/t/grayscale-to-rgb-transform/18315/2
             return image.repeat(3, 1, 1)
         else:
-            raise ValueError("Invalid #color channel(={image.shape[0]}): {image_path}")
+            msg = "_read_image() expected image channel size to be one of 3, or 1 " \
+                  f"but not found {image.shape[0]}. image file path: {image_path}"
+            raise RuntimeError(msg)
+
 
     def _generate_simcc_label(self, keypoints: KeyPoints)\
         -> tuple[Tensor, Tensor, Tensor]:
@@ -299,7 +302,7 @@ class CocoDataset(Dataset):
                  preds_per_image: dict[int, list[torch.Tensor]],
                  yx2xy: bool = True
                  ) -> tuple[OrderedDict[str,float], float]:
-        """Evaluating keypoints prediction quality using ground truth bbox."""
+        """Calculate average precision using ground truth bbox."""
         pred_dump = []
         eval_target_image_ids = set()
         for image_id, preds in preds_per_image.items():

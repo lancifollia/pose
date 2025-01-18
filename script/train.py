@@ -28,7 +28,9 @@ def get_loss_function(loss_type: str) -> nn.Module:
     if loss_type == "KLDiscretLoss":
         return KLDiscretLoss()
     else:
-        raise ValueError(f"Invalid loss type: {loss_type}")
+        msg = "Only the loss_type 'KLDiscrteLoss' is supported yet. " \
+              f"Invalid loss type: {loss_type}"
+        raise RuntimeError(msg)
 
 
 def get_model(cfg: CfgNode, need_init_weights: bool) -> nn.Module:
@@ -36,7 +38,9 @@ def get_model(cfg: CfgNode, need_init_weights: bool) -> nn.Module:
         from pose.model.resnet import get_model
         return get_model(cfg, need_init_weights)
     else:
-        raise ValueError(f"Invalid model name: {cfg.MODEL.NAME}")
+        msg = "Only the model 'resnet' is supported yet. " \
+              f"Invalid model name: {cfg.MODEL.NAME}"
+        raise RuntimeError(msg)
 
 
 def train(config_fname: str) -> None:
