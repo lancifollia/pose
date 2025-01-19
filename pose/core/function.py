@@ -67,11 +67,9 @@ def train_simcc(cfg: CfgNode,
         start_ts = time.time()
 
         if i % cfg.TRAIN.LOGGING_FREQ == 0 or i == len(tr_dataloader) - 1:
-            msg = f"Train: [{i}/{len(tr_dataloader) - 1}] " \
-                  f"Loss {losses.val:.5f}({losses.avg:.5f})  "\
-                  f"Time {batch_time.val:.2f}({batch_time.avg:.2f})  " \
-                  f"Speed {input.shape[0] / batch_time.val:.2f} samples/sec  " \
-                  f"Data {data_time.val:.2f}({data_time.avg:.2f})"
+            msg = f"Train: [{i}/{len(tr_dataloader) - 1}]\t" \
+                  f"Loss {losses.val:.6f}({losses.avg:.6f})\t"\
+                  f"Speed {input.shape[0] / batch_time.val:.2f} samples/sec"
             logger.info(msg)
 
 
@@ -128,9 +126,8 @@ def validate_simcc(cfg: CfgNode,
                 preds_per_image[image_id].append(final_pred)
 
             if i % cfg.VALIDATE.LOGGING_FREQ == 0 or i == len(val_dataloader) - 1:
-                msg = f"Validation: [{i}/{len(val_dataloader) - 1}] " \
-                      f"Loss {losses.val:.5f}({losses.avg:.5f})  "\
-                      f"Time {batch_time.val:.2f}({batch_time.avg:.2f})"
+                msg = f"Validation: [{i}/{len(val_dataloader) - 1}]\t" \
+                      f"Loss {losses.val:.6f}({losses.avg:.6f})"
                 logger.info(msg)
             start_ts = time.time()
 
