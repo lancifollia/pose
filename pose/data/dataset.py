@@ -94,6 +94,7 @@ class CocoDataset(Dataset):
         num_skip_crowd = 0
         num_skip_not_human = 0
         num_skip_insufficient_keypoints = 0
+        num_skip_invalid_bbox = 0
         self._dataset = list[DataSample]()
         for _anno in anno['annotations']:
             if _anno['iscrowd'] != 0:
@@ -107,14 +108,26 @@ class CocoDataset(Dataset):
             if kp.num_visible() < self.min_keypoints:
                 num_skip_insufficient_keypoints += 1
                 continue
-            # Convert bbox format from COCO data format(=xywh) to yxhw
-            x, y, w, h = [math.floor(_x) for _x in _anno['bbox']]
-            bbox = BBox(y=y, x=x, h=h, w=w)
-            self._dataset.append(DataSample(keypoints=kp, bbox=bbox,
-                                            image_id=_anno['image_id'], id=_anno['id']))
+            # Sanitize bbox data
+            image_meta = self._image_meta[_anno['image_id']]
+            ih = image_meta.h
+            iw = image_meta.w
+            x, y, bw, bh = [math.floor(_x) for _x in _anno['bbox']]
+            x1 = max(0, x)
+            y1 = max(0, y)
+            x2 = min(iw - 1, x1 + max(0, bw - 1))
+            y2 = min(ih - 1, y1 + max(0, bh - 1))
+            if _anno['area'] > 0 and x2 >= x1 and y2 >= y1:
+                # Convert bbox format from COCO data format(=xywh) to yxhw
+                bbox = BBox(y=y1, x=x1, h=y2-y1, w=x2-x1)
+                self._dataset.append(DataSample(keypoints=kp, bbox=bbox,
+                                                image_id=_anno['image_id'], id=_anno['id']))
+            else:
+                num_skip_invalid_bbox += 1
         logger.info(f"skip crowd: {num_skip_crowd:,d}")
         logger.info(f"skip not human: {num_skip_not_human:,d}")
         logger.info(f"skip insufficient keypoints: {num_skip_insufficient_keypoints:,d}")
+        logger.info(f"skip invalid bbox: {num_skip_invalid_bbox:,d}")
         logger.info(f"minimum keypoints cutoff: {self.min_keypoints}")
         logger.info(f"Num final dataset(keypoints annotation) size: {len(self._dataset):,d}")
 
