@@ -52,7 +52,7 @@ class KeyPoints(object):
             self._kp[:,1] = coco_kp[:,0]
 
             self._vis = coco_kp[:,2]
-            self._vis_level = 2  # default visibility level
+            self._vis_level = 1  # default visibility level
         else:
             msg = f"Only COCO dataset format supported yet. Invalid data format: {data_format}"
             raise Exception(msg)
