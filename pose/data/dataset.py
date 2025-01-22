@@ -53,7 +53,7 @@ class CocoDataset(Dataset):
             anno = orjson.loads(_anno_fin.read())
         logger.info(f"Annotation fname: {self.anno_fname}")
         self.image_dir = data_cfg.IMAGE_DIR
-        logger.info(f"Image file director: {self.image_dir}")
+        logger.info(f"Image file directory: {self.image_dir}")
 
         self.nn_input_size = cfg.MODEL.INPUT_SIZE
         logger.info(f"NN input size(height, width): {self.nn_input_size}")
