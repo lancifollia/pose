@@ -56,19 +56,15 @@ def crop_and_resize_image(image: torch.Tensor,
         else:
             bw = int(min(bh * aspect_ratio, 2 * (iw - cx), 2 * cx))
             bh = int(float(bw) * aspect_ratio**-1)
-        # On vertically long images, focus on the top.
-        y1 = max(min(cy - math.ceil(bh * 0.5),
-                    cy - math.ceil(sbh * 0.5)), 0)
-        x1 = max(cx - math.ceil(bw * 0.5), 0)
     else:
         bh = int(min(sbh * scale, 2 * (ih - cy), 2 * cy))
         bw = int(min(sbw * scale, 2 * (iw - cx), 2 * cx))
-        y1 = max(min(cy - math.ceil(bh * 0.5), cy - math.ceil(sbh * 0.5)), 0)
-        x1 = max(cx - math.ceil(bw * 0.5), 0)
         if bw > bh * aspect_ratio:
             bh = int(bw * aspect_ratio**-1)
         elif bw < bh * aspect_ratio:
             bw = int(bh * aspect_ratio)
+    y1 = max(cy - math.ceil(bh * 0.5), 0)
+    x1 = max(cx - math.ceil(bw * 0.5), 0)
     new_bbox = BBox(y=y1, x=x1, h=bh, w=bw)
     logger.debug(f"new bbox: {new_bbox}")
 
