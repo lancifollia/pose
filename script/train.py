@@ -64,8 +64,8 @@ def train(config_fname: str) -> None:
     # Data loading
     input_transform = Compose([
         RescaleImgDiv255(),
-        Normalize(mean=[0.485, 0.456, 0.406], # imagenet data normalization
-                  std=[0.229, 0.224, 0.225])
+        Normalize(mean=[0.406, 0.485, 0.456], # imagenet data normalization (RGB order)
+                  std=[0.225, 0.229, 0.224])
     ])
     logger.info("Preapring training dataset")
     tr_dataset = CocoDataset(cfg, is_train=True,
