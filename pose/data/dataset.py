@@ -163,7 +163,10 @@ class CocoDataset(Dataset):
 
         rotate = 0    # angle in degrees (-180 ~ 180)
         scale = 1.25  # default scale
-        if self.do_data_augment:
+
+        # Temporally suppress data augmentation
+        # if self.do_data_augment:
+        if False:
             if np.random.random() < self.half_body_proba \
                and keypoints.num_upperbody_visible() > self.half_body_min_kps:
                 keypoints, bbox, center = self._half_body_transform(keypoints, image_size)
@@ -184,9 +187,8 @@ class CocoDataset(Dataset):
         image = transforms.rotate_image(image, rotate, center)
         keypoints = keypoints.rotate(rotate, center, image_size)
 
-        image, bbox = transforms.crop_and_resize_image(image, scale, center,
-                                                       [bh, bw], self.nn_input_size)
-        keypoints = keypoints.stretch(bbox, self.nn_input_size)
+        image, bbox = transforms.crop_image(image, scale, center, self.nn_input_size)
+        keypoints = keypoints.reposition(bbox, self.nn_input_size)
 
         if self.transform is not None:
             nn_input_image = self.transform(image)
@@ -196,6 +198,8 @@ class CocoDataset(Dataset):
         target_y, target_x, target_weight = self._generate_simcc_label(keypoints)
         meta = {"image": image,
                 "image_id": torch.tensor(sample.image_id),  # image_id: int type
+                "anno_id": torch.tensor(sample.id),         # anno_id: int type
+                "origin_bbox": torch.tensor(sample.bbox.get_yxhw()),
                 "bbox": torch.tensor(bbox.get_yxhw()),
                 "keypoints": keypoints.get_kps(),
                 "vis": keypoints.get_vis()}

@@ -4,7 +4,7 @@ import math
 import torch
 from loguru import logger
 from torchvision.transforms.v2 import InterpolationMode
-from torchvision.transforms.v2.functional import affine, resize
+from torchvision.transforms.v2.functional import affine, crop
 
 from pose.data.datatype import BBox
 
@@ -27,60 +27,21 @@ def rotate_image(image: torch.Tensor,
                   interpolation=InterpolationMode.BILINEAR, center=center_xy)
 
 
-def crop_and_resize_image(image: torch.Tensor,
-                          scale: float,
-                          center: list[int],         # (y, x)
-                          src_box_size: list[int],   # (h, w)
-                          out_image_size: list[int],  # (h, w)
-                          keep_aspect_ratio: bool = False
-                          ) -> tuple[torch.Tensor, BBox]:
+def crop_image(image: torch.Tensor,
+               scale: float,
+               center: list[int],         # (y, x)
+               out_image_size: list[int],  # (h, w)
+               ) -> tuple[torch.Tensor, BBox]:
     cy, cx = center
-    sbh, sbw = src_box_size
-    ih, iw = image.shape[1:]  # image.shape: (C,H,W)
     oh, ow = out_image_size
-    aspect_ratio = float(ow) / oh
 
-    logger.debug(f"original image size(c,h,w): {image.shape}")
-    logger.debug(f"original box size(h,w): {sbh}, {sbw}")
-    logger.debug(f"bbox center: {center}")
+    top = math.ceil(cy - oh * 0.5)
+    left = math.ceil(cx - ow * 0.5)
 
-    # Resizing bbox & cropping
-    if keep_aspect_ratio:
-        bh = int(min(sbh * scale, 2 * (ih - cy), 2 * cy))
-        logger.debug(f"bh=min({sbh * scale}, {2 * (ih - cy)}, {2 * cy})")
-        bw = int(min(sbw * scale, 2 * (iw - cx), 2 * cx))
-        logger.debug(f"bw=min({sbw * scale}, {2 * (iw - cx)}, {2 * cx})")
-        if bw >= bh * aspect_ratio:
-            bh = int(min(float(bw) * aspect_ratio**-1, 2 * (ih - cy), 2 * cy))
-            bw = int(bh * aspect_ratio)
-        else:
-            bw = int(min(bh * aspect_ratio, 2 * (iw - cx), 2 * cx))
-            bh = int(float(bw) * aspect_ratio**-1)
-    else:
-        bh = int(min(sbh * scale, 2 * (ih - cy), 2 * cy))
-        bw = int(min(sbw * scale, 2 * (iw - cx), 2 * cx))
-        if bw > bh * aspect_ratio:
-            bh = int(bw * aspect_ratio**-1)
-        elif bw < bh * aspect_ratio:
-            bw = int(bh * aspect_ratio)
-    y1 = max(cy - math.ceil(bh * 0.5), 0)
-    x1 = max(cx - math.ceil(bw * 0.5), 0)
-    new_bbox = BBox(y=y1, x=x1, h=bh, w=bw)
+    image = crop(image, top=top, left=left, height=oh, width=ow)
+
+    new_bbox = BBox(y=top, x=left, h=oh, w=ow)
     logger.debug(f"new bbox: {new_bbox}")
-
-    image = image[:, y1:y1+bh, x1:x1+bw]
-    logger.debug(f"expected output size: {out_image_size}")
-    logger.debug(f"cropped image size: {image.shape}")
-    logger.debug(f"cropped image aspect ratio: {float(image.shape[2])/image.shape[1]}")
-
-    if keep_aspect_ratio:
-        cropped_aspect_ratio = float(image.shape[2])/image.shape[1]
-        if math.fabs(aspect_ratio - cropped_aspect_ratio) / aspect_ratio > 0.1:
-            logger.warning(f"Highly skewed cropped aspect ratio: {cropped_aspect_ratio}")
-
-    # Resizing cropped image
-    image = resize(image, size=out_image_size,
-                   interpolation=InterpolationMode.BILINEAR)
 
     return image, new_bbox
 

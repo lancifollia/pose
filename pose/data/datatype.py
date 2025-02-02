@@ -157,13 +157,14 @@ class KeyPoints(object):
                 ret.delete_kp(i)
         return ret
 
-    def stretch(self,
-                bbox: BBox,
-                target_size: list[int],  # (h, w)
-                ) -> KeyPoints:
+    def reposition(self,
+                   bbox: BBox,
+                   target_size: list[int],  # (h, w)
+                   ) -> KeyPoints:
         by, bx, bh, bw = bbox.get_yxhw()
         origin = torch.tensor([by, bx])
         th, tw = target_size
+        # TODO: need to check scaling factor correctly works
         M = torch.tensor([[float(th)/bh, 0],  # scaling linear transform
                           [0, float(tw)/bw]], dtype=torch.float32)
         ret = copy.deepcopy(self)
