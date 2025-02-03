@@ -35,7 +35,7 @@ def train_simcc(cfg: CfgNode,
                 criterion: nn.Module,
                 optimizer: optim.Optimizer,
                 epoch: int
-                ) -> None:
+                ) -> float:
 
     data_time = AverageMeter()
     batch_time = AverageMeter()
@@ -72,6 +72,8 @@ def train_simcc(cfg: CfgNode,
                   f"Speed {input.shape[0] / batch_time.val:.2f} samples/sec"
             logger.info(msg)
 
+    return losses.avg
+
 
 def validate_simcc(cfg: CfgNode,
                    val_dataloader: DataLoader,
@@ -79,7 +81,7 @@ def validate_simcc(cfg: CfgNode,
                    model: nn.Module,
                    criterion: nn.Module,
                    epoch: int
-                   ) -> float:
+                   ) -> tuple[float, float, float]:
 
     batch_time = AverageMeter()
     losses = AverageMeter()
@@ -132,11 +134,11 @@ def validate_simcc(cfg: CfgNode,
             start_ts = time.time()
 
         logger.info(f"AP evaluation target images: {len(preds_per_image):,}")
-        eval_stats, perf_indicator = val_dataset.evaluate(preds_per_image, epoch)
+        eval_stats, average_precision, average_recall = val_dataset.evaluate(preds_per_image, epoch)
 
         logger.info(", ".join(f"{_m}: {eval_stats[_m]:.4f}"
                               for _m in ['AP', 'AP .5', 'AP .75', 'AP (M)', 'AP (L)']))
         logger.info(", ".join(f"{_m}: {eval_stats[_m]:.4f}"
                               for _m in ['AR', 'AR .5', 'AR .75', 'AR (M)', 'AR (L)']))
 
-        return perf_indicator
+        return average_precision, average_recall, losses.avg

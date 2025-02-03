@@ -1,6 +1,7 @@
 """
 Training script
 """
+import datetime
 import os
 import sys
 import time
@@ -93,13 +94,21 @@ def train(config_fname: str) -> None:
         optimizer, cfg.TRAIN.LR_STEP, cfg.TRAIN.LR_FACTOR, last_epoch=-1
     )
 
+    logging_fname = f"perf_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.log"
+    logger.info(f"performance logging file name: {logging_fname}")
+    with open(logging_fname, 'w') as fout:
+        fout.write("| ep | AP | AR | Train | Val |\n")
+        fout.write("| --- | --- | --- | --- | --- |\n")
+
     begin_epoch = 0
     for epoch in range(begin_epoch, cfg.TRAIN.END_EPOCH):
         start_ts = time.time()
         logger.info(f"{'=-'*5} Epoch[{epoch}] started {'-='*5}")
-        train_simcc(cfg, tr_dataloader, model, criterion, optimizer, epoch)
-        validate_simcc(cfg, val_dataloader, val_dataset, model, criterion, epoch)
+        train_loss = train_simcc(cfg, tr_dataloader, model, criterion, optimizer, epoch)
+        ap, ar, val_loss = validate_simcc(cfg, val_dataloader, val_dataset, model, criterion, epoch)
         lr_scheduler.step()
+        with open(logging_fname, 'a') as fout:
+            fout.write(f"| {epoch} | {ap:.4f} | {ar:.4f} | {train_loss:.6f} | {val_loss:.6f} |\n")
         logger.info(f"Epoch[{epoch}] complete. Elapsed at {(time.time() - start_ts)/60:.2f} mins")
 
     logger.info('Model training is complete')

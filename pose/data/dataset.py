@@ -320,7 +320,7 @@ class CocoDataset(Dataset):
                  preds_per_image: dict[int, list[torch.Tensor]],
                  epoch: int,
                  yx2xy: bool = True
-                 ) -> tuple[OrderedDict[str,float], float]:
+                 ) -> tuple[OrderedDict[str,float], float, float]:
         """Calculate average precision using ground truth bbox."""
         pred_dump = []
         eval_target_image_ids = set()
@@ -368,4 +368,4 @@ class CocoDataset(Dataset):
         # if os.path.exists(pred_dump_fname):
         #    os.remove(pred_dump_fname)
 
-        return eval_stats, eval_stats['AP']
+        return eval_stats, eval_stats['AP'], eval_stats['AR']
