@@ -4,7 +4,7 @@ import math
 import torch
 from loguru import logger
 from torchvision.transforms.v2 import InterpolationMode
-from torchvision.transforms.v2.functional import affine, crop
+from torchvision.transforms.v2.functional import affine, crop, resize
 
 from pose.data.datatype import BBox
 
@@ -29,18 +29,33 @@ def rotate_image(image: torch.Tensor,
 
 def crop_image(image: torch.Tensor,
                scale: float,
-               center: list[int],         # (y, x)
+               center: list[int],          # (y, x)
+               bbox_size: list[int],       # (h, w)
                out_image_size: list[int],  # (h, w)
                ) -> tuple[torch.Tensor, BBox]:
     cy, cx = center
+    _bh, _bw = bbox_size
     oh, ow = out_image_size
+    aspect_ratio = float(ow) / oh
 
-    top = math.ceil(cy - oh * 0.5)
-    left = math.ceil(cx - ow * 0.5)
+    bh = _bh * scale
+    bw = _bw * scale
 
-    image = crop(image, top=top, left=left, height=oh, width=ow)
+    if bw > bh * aspect_ratio:
+        bh = bw * (aspect_ratio ** -1)
+    elif bw < bh * aspect_ratio:
+        bw = bh * aspect_ratio
 
-    new_bbox = BBox(y=top, x=left, h=oh, w=ow)
+    top = math.floor(cy - bh * 0.5)
+    left = math.floor(cx - bw * 0.5)
+    bh = math.floor(bh)
+    bw = math.floor(bw)
+
+    image = crop(image, top=top, left=left, height=bh, width=bw)
+    image = resize(image, size=out_image_size,
+                   interpolation=InterpolationMode.BILINEAR)
+
+    new_bbox = BBox(y=top, x=left, h=bh, w=bw)
     logger.debug(f"new bbox: {new_bbox}")
 
     return image, new_bbox

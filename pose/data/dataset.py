@@ -161,8 +161,8 @@ class CocoDataset(Dataset):
         image = self._read_image(image_path)  # (c,h,w)
         keypoints = sample.keypoints
 
-        rotate = 0    # angle in degrees (-180 ~ 180)
-        scale = 1.25  # default scale
+        rotate = 0      # angle in degrees (-180 ~ 180)
+        scale = 1.25    # default scale
 
         # Temporally suppress data augmentation
         # if self.do_data_augment:
@@ -187,7 +187,7 @@ class CocoDataset(Dataset):
         image = transforms.rotate_image(image, rotate, center)
         keypoints = keypoints.rotate(rotate, center, image_size)
 
-        image, bbox = transforms.crop_image(image, scale, center, self.nn_input_size)
+        image, bbox = transforms.crop_image(image, scale, center, [bh, bw], self.nn_input_size)
         keypoints = keypoints.reposition(bbox, self.nn_input_size)
 
         if self.transform is not None:
@@ -230,15 +230,15 @@ class CocoDataset(Dataset):
         bh, bw, center_y, center_x = dst_keypoints.get_bbox_size_and_center()
 
         scale_factor = 1.5
-        bh = math.ceil(bh * scale_factor)
+        bh = math.floor(bh * scale_factor)
         half_bh = min(bh * 0.5, center_y, ih - center_y)
-        bw = math.ceil(bw * scale_factor)
+        bw = math.floor(bw * scale_factor)
         half_bw = min(bw * 0.5, center_x, iw - center_x)
-        bh = math.ceil(half_bh * 2)
-        bw = math.ceil(half_bw * 2)
+        bh = math.floor(half_bh * 2)
+        bw = math.floor(half_bw * 2)
 
-        y1 = math.ceil(center_y - half_bh)
-        x1 = math.ceil(center_x - half_bw)
+        y1 = math.floor(center_y - half_bh)
+        x1 = math.floor(center_x - half_bw)
 
         bbox = BBox(y=y1, x=x1, h=bh, w=bw)
         center = [center_y, center_x]
@@ -280,7 +280,7 @@ class CocoDataset(Dataset):
 
             # Check that any part of the gaussian is in-bounds
             uly, ulx = math.floor(ky - buffer), math.floor(kx - buffer)
-            bry, brx = math.ceil(ky + buffer + 1), math.ceil(kx + buffer + 1)
+            bry, brx = math.floor(ky + buffer + 1), math.floor(kx + buffer + 1)
             if uly < 0 or ulx < 0 or bry > h or brx > w:
                 target_weight[kp_idx] = 0.0
 
@@ -288,10 +288,10 @@ class CocoDataset(Dataset):
                 continue
 
             # Space-aware Gaussian label smoothing
-            mu_y = ky * sf + math.ceil(sf / 2) - 1
-            mu_x = kx * sf + math.ceil(sf / 2) - 1
-            y = torch.arange(0, math.ceil(h * sf), 1, dtype=torch.float32)
-            x = torch.arange(0, math.ceil(w * sf), 1, dtype=torch.float32)
+            mu_y = ky * sf + math.floor(sf / 2) - 1
+            mu_x = kx * sf + math.floor(sf / 2) - 1
+            y = torch.arange(0, math.floor(h * sf), 1, dtype=torch.float32)
+            x = torch.arange(0, math.floor(w * sf), 1, dtype=torch.float32)
             denom = sigma * np.sqrt(np.pi * 2)
             target_y[kp_idx] = (torch.exp(- ((y - mu_y) ** 2) / (2 * sigma ** 2))) / denom
             target_x[kp_idx] = (torch.exp(- ((x - mu_x) ** 2) / (2 * sigma ** 2))) / denom
