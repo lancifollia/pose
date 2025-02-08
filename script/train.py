@@ -3,11 +3,13 @@ Training script
 """
 import datetime
 import os
+import pathlib
 import sys
 import time
 
+import torch
 from loguru import logger
-from torch import cuda, optim, nn
+from torch import nn
 from torch.utils.data import DataLoader
 from torchvision.transforms import Compose, Normalize
 from yacs.config import CfgNode
@@ -50,7 +52,7 @@ def train(config_fname: str) -> None:
     cfg.freeze()
     logger.info(f"Configurations:\n{cfg}")
 
-    cuda.set_device("cuda:0")
+    torch.cuda.set_device("cuda:0")
 
     # Prepare model parameter
     model = get_model(cfg, need_init_weights=True).cuda()
@@ -88,9 +90,9 @@ def train(config_fname: str) -> None:
                                 pin_memory=cfg.DATA_LOADER.USE_PIN_MEMORY,
                                 )
 
-    optimizer = optim.Adam(model.parameters(), lr=cfg.TRAIN.LR)
+    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.TRAIN.LR)
     logger.info(f"Optimizer:\n{optimizer}")
-    lr_scheduler = optim.lr_scheduler.MultiStepLR(
+    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer, cfg.TRAIN.LR_STEP, cfg.TRAIN.LR_FACTOR, last_epoch=-1
     )
 
@@ -100,15 +102,38 @@ def train(config_fname: str) -> None:
         fout.write("| ep | AP | AR | Train | Val |\n")
         fout.write("| --- | --- | --- | --- | --- |\n")
 
+    checkpoint_dir = "checkpoints"
+    pathlib.Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
+
     begin_epoch = 0
+    best_ap = -1.0
+
     for epoch in range(begin_epoch, cfg.TRAIN.END_EPOCH):
         start_ts = time.time()
         logger.info(f"{'=-'*5} Epoch[{epoch}] started {'-='*5}")
+
         train_loss = train_simcc(cfg, tr_dataloader, model, criterion, optimizer, epoch)
-        ap, ar, val_loss = validate_simcc(cfg, val_dataloader, val_dataset, model, criterion, epoch)
         lr_scheduler.step()
+
+        ap, ar, val_loss = validate_simcc(cfg, val_dataloader, val_dataset, model, criterion, epoch)
+
         with open(logging_fname, 'a') as fout:
             fout.write(f"| {epoch} | {ap:.4f} | {ar:.4f} | {train_loss:.6f} | {val_loss:.6f} |\n")
+
+        if ap > best_ap:
+            best_ap = ap
+            logger.info(f"Best AP is updated! {ap:.4f}")
+
+        checkpoint_fpath = os.path.join(checkpoint_dir, "checkpoint_{epoch}.pth")
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'loss': {'train': train_loss, 'val': val_loss},
+            'avg_precision': ap,
+            'best_avg_precision': best_ap,
+        }, checkpoint_fpath)
+
         logger.info(f"Epoch[{epoch}] complete. Elapsed at {(time.time() - start_ts)/60:.2f} mins")
 
     logger.info('Model training is complete')
