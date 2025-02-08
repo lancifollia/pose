@@ -174,10 +174,8 @@ class CocoDataset(Dataset):
 
         keypoints = sample.keypoints.pad(hpad, wpad)
 
-        # Temporally suppress half body transform
-        # if half_body:
-        if False:
-            if keypoints.num_upperbody_visible() > self.half_body_min_kps:
+        if half_body:
+            if keypoints.num_visible() > self.half_body_min_kps:
                 keypoints, bbox = self._half_body_transform(keypoints, image_size)
                 logger.debug("the image is half-body transformed.")
 
@@ -242,7 +240,7 @@ class CocoDataset(Dataset):
     def _half_body_transform(self,
                              keypoints: KeyPoints,
                              image_size: list[int]
-                             ) -> tuple[KeyPoints, BBox, list[int]]:
+                             ) -> tuple[KeyPoints, BBox]:
         logger.debug("half(upper) body transform")
 
         dst_keypoints = keypoints.remove_lowerbody_kps()
@@ -263,9 +261,8 @@ class CocoDataset(Dataset):
         x1 = math.floor(center_x - half_bw)
 
         bbox = BBox(y=y1, x=x1, h=bh, w=bw)
-        center = [center_y, center_x]
 
-        return dst_keypoints, bbox, center
+        return dst_keypoints, bbox
 
     def _read_image(self, image_path: str) -> Tensor:
         """
