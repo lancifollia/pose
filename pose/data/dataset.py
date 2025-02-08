@@ -150,8 +150,13 @@ class CocoDataset(Dataset):
     def __len__(self) -> int:
         return len(self._dataset)
 
-    def __getitem__(self, idx: int)\
-        -> tuple[Tensor, Tensor, Tensor, Tensor, Dict]:
+    def get_item(self,
+                 idx: int,
+                 half_body: bool = False,
+                 hflip: bool = False,
+                 rotate: int = 0,
+                 scale: float = 1.25
+                 ) -> tuple[Tensor, Tensor, Tensor, Tensor, Dict]:
         sample = self.get_sample(idx)
         image_meta = self.get_image_meta(sample.image_id)
         image_path = image_meta.fpath
@@ -161,28 +166,19 @@ class CocoDataset(Dataset):
         image = self._read_image(image_path)  # (c,h,w)
         keypoints = sample.keypoints
 
-        rotate = 0      # angle in degrees (-180 ~ 180)
-        scale = 1.25    # default scale
-
-        # Temporally suppress data augmentation
-        # if self.do_data_augment:
+        # Temporally suppress half body transform
+        # if half_body:
         if False:
-            if np.random.random() < self.half_body_proba \
-               and keypoints.num_upperbody_visible() > self.half_body_min_kps:
+            if keypoints.num_upperbody_visible() > self.half_body_min_kps:
                 keypoints, bbox, center = self._half_body_transform(keypoints, image_size)
                 _, _, bh, bw = bbox.get_yxhw()
                 logger.debug("the image is half-body transformed.")
-            if np.random.random() < self.flip_proba:
-                image = image.flip(2)
-                center[1] = image_size[1] - center[1]
-                keypoints = keypoints.hflip(image_size[1])
-                logger.debug("the image is horizontally flipped.")
-            rotate_factor = self._get_rotate_factor(image_size[1], center[1])
-            rotate = np.clip(np.random.randn() * rotate_factor,
-                             rotate_factor * -2, rotate_factor * 2)
-            scale = scale * np.clip(np.random.randn() * self.scale_factor + 1,
-                                    1 - self.scale_factor, 1 + self.scale_factor)
-        logger.debug(f"rotate: {rotate:.2f}, scale: {scale:.2f}")
+
+        if hflip is True:
+            image = image.flip(2)
+            center[1] = image_size[1] - center[1]
+            keypoints = keypoints.hflip(image_size[1])
+            logger.debug("the image is horizontally flipped.")
 
         image = transforms.rotate_image(image, rotate, center)
         keypoints = keypoints.rotate(rotate, center, image_size)
@@ -205,6 +201,25 @@ class CocoDataset(Dataset):
                 "vis": keypoints.get_vis()}
 
         return nn_input_image, target_y, target_x, target_weight, meta
+
+    def __getitem__(self, idx: int)\
+        -> tuple[Tensor, Tensor, Tensor, Tensor, Dict]:
+        half_body = False
+        hflip = False
+        rotate = 0
+        scale = 1.25
+
+        if self.do_data_augment:
+            if np.random.random() < self.half_body_proba:
+                half_body = True
+            if np.random.random() < self.flip_proba:
+                hflip = True
+            rotate = np.clip(np.random.randn() * self.rotate_factor,
+                             self.rotate_factor * -2, self.rotate_factor * 2)
+            scale = scale * np.clip(np.random.randn() * self.scale_factor + 1,
+                                    1 - self.scale_factor, 1 + self.scale_factor)
+
+        return self.get_item(idx, half_body, hflip, rotate, scale)
 
     def _get_rotate_factor(self, image_width: int, center_x: int) -> float:
         """Retrict rotating factor when side margin is small."""
