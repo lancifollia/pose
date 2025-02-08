@@ -162,10 +162,11 @@ class CocoDataset(Dataset):
         image_meta = self.get_image_meta(sample.image_id)
         image_path = image_meta.fpath
 
-        pad_ratio = 0.3
+        hpad_ratio = 0.0
+        wpad_ratio = 0.2
         image_size = [image_meta.h, image_meta.w]
-        hpad = math.floor(image_meta.h * pad_ratio)
-        wpad = math.floor(image_meta.w * pad_ratio)
+        hpad = math.floor(image_meta.h * hpad_ratio)
+        wpad = math.floor(image_meta.w * wpad_ratio)
         image_size = [image_size[0] + hpad * 2, image_size[1] + wpad * 2]
 
         bbox = sample.bbox.pad(hpad, wpad)
