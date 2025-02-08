@@ -34,8 +34,19 @@ class BBox(object):
         ret.x = ret.x + wpad
         return ret
 
+    def hflip(self, image_width: int) -> BBox:
+        ret = copy.deepcopy(self)
+        ret.x = image_width - ret.x - ret.w
+        return ret
+
     def get_yxhw(self) -> list[int]:
         return [self.y, self.x, self.h, self.w]
+
+    def center(self) -> list[int]:
+        return [math.floor(self.y + 0.5 * self.h), math.floor(self.x + 0.5 * self.w)]
+
+    def size(self) -> list[int]:
+        return [self.h, self.w]
 
 
 class KeyPoints(object):

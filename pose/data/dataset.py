@@ -168,11 +168,7 @@ class CocoDataset(Dataset):
         wpad = math.floor(image_meta.w * pad_ratio)
         image_size = [image_size[0] + hpad * 2, image_size[1] + wpad * 2]
 
-        y, x, bh, bw = sample.bbox.get_yxhw()
-        y += hpad
-        x += wpad
-
-        center = [math.floor(y+0.5*bh), math.floor(x+0.5*bw)]
+        bbox = sample.bbox.pad(hpad, wpad)
         image = self._read_image(image_path)  # (c,h,w)
         image = pad(image, (wpad, wpad, hpad, hpad))  # (left pad, right pad, top pad, bottom pad)
 
@@ -182,20 +178,19 @@ class CocoDataset(Dataset):
         # if half_body:
         if False:
             if keypoints.num_upperbody_visible() > self.half_body_min_kps:
-                keypoints, bbox, center = self._half_body_transform(keypoints, image_size)
-                _, _, bh, bw = bbox.get_yxhw()
+                keypoints, bbox = self._half_body_transform(keypoints, image_size)
                 logger.debug("the image is half-body transformed.")
 
         if hflip is True:
             image = image.flip(2)
-            center[1] = image_size[1] - center[1]
+            bbox = bbox.hflip(image_size[1])
             keypoints = keypoints.hflip(image_size[1])
             logger.debug("the image is horizontally flipped.")
 
-        image = transforms.rotate_image(image, rotate, center)
-        keypoints = keypoints.rotate(rotate, center, image_size)
+        image = transforms.rotate_image(image, rotate, bbox.center())
+        keypoints = keypoints.rotate(rotate, bbox.center(), image_size)
 
-        image, bbox = transforms.crop_image(image, scale, center, [bh, bw], self.nn_input_size)
+        image, bbox = transforms.crop_image(image, scale, bbox.center(), bbox.size(), self.nn_input_size)
         keypoints = keypoints.reposition(bbox, self.nn_input_size)
 
         if self.transform is not None:
