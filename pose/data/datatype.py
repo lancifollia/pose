@@ -28,6 +28,12 @@ class BBox(object):
     def _to_string(self) -> str:
         return f"y({self.y}) x({self.x}) h({self.h}) w({self.w})"
 
+    def pad(self, hpad: int, wpad: int) -> BBox:
+        ret = copy.deepcopy(self)
+        ret.y = ret.y + hpad
+        ret.x = ret.x + wpad
+        return ret
+
     def get_yxhw(self) -> list[int]:
         return [self.y, self.x, self.h, self.w]
 
@@ -124,6 +130,16 @@ class KeyPoints(object):
             if ret.is_ith_kp_visible(i) is False:
                 continue
             ret.delete_kp(i)
+        return ret
+
+    def pad(self, hpad: int, wpad: int) -> KeyPoints:
+        ret = copy.deepcopy(self)
+        for i in range(self.num_kp):
+            if ret.is_ith_kp_visible(i) is False:
+                continue
+            y, x = self._kp[i]
+            new_coord = [y + hpad, x + wpad]
+            ret.update_kp(i, torch.Tensor(new_coord), int(self._vis[i]))
         return ret
 
     def hflip(self, image_width: int) -> KeyPoints:

@@ -19,6 +19,7 @@ from loguru import logger
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 from torch import Tensor
+from torch.nn.functional import pad
 from torch.utils.data import Dataset
 from yacs.config import CfgNode
 
@@ -160,11 +161,22 @@ class CocoDataset(Dataset):
         sample = self.get_sample(idx)
         image_meta = self.get_image_meta(sample.image_id)
         image_path = image_meta.fpath
+
+        pad_ratio = 0.3
         image_size = [image_meta.h, image_meta.w]
+        hpad = math.floor(image_meta.h * pad_ratio)
+        wpad = math.floor(image_meta.w * pad_ratio)
+        image_size = [image_size[0] + hpad * 2, image_size[1] + wpad * 2]
+
         y, x, bh, bw = sample.bbox.get_yxhw()
+        y += hpad
+        x += wpad
+
         center = [math.floor(y+0.5*bh), math.floor(x+0.5*bw)]
         image = self._read_image(image_path)  # (c,h,w)
-        keypoints = sample.keypoints
+        image = pad(image, (wpad, wpad, hpad, hpad))  # (left pad, right pad, top pad, bottom pad)
+
+        keypoints = sample.keypoints.pad(hpad, wpad)
 
         # Temporally suppress half body transform
         # if half_body:
@@ -196,7 +208,7 @@ class CocoDataset(Dataset):
                 "image_id": torch.tensor(sample.image_id),  # image_id: int type
                 "anno_id": torch.tensor(sample.id),         # anno_id: int type
                 "origin_bbox": torch.tensor(sample.bbox.get_yxhw()),
-                "bbox": torch.tensor(bbox.get_yxhw()),
+                "bbox": torch.tensor(bbox.pad(hpad * -1, wpad * -1).get_yxhw()),
                 "keypoints": keypoints.get_kps(),
                 "vis": keypoints.get_vis()}
 
