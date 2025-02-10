@@ -155,12 +155,26 @@ class KeyPoints(object):
 
     def hflip(self, image_width: int) -> KeyPoints:
         ret = copy.deepcopy(self)
+
+        # Flip coordinates
         for i in range(self.num_kp):
             if ret.is_ith_kp_visible(i) is False:
                 continue
             y, x = self._kp[i]
             new_coord = [y, image_width - x]
             ret.update_kp(i, torch.Tensor(new_coord), int(self._vis[i]))
+
+        # Swap left-right joints (Skip Nose(keypoint idx==0))
+        for i in range(1, self.num_kp, 2):
+            left_idx = i
+            right_idx = i+1
+            left_kp = copy.deepcopy(ret._kp[left_idx])
+            left_vis = copy.deepcopy(ret._vis[left_idx])
+            ret._kp[left_idx] = ret._kp[right_idx]
+            ret._vis[left_idx] = ret._vis[right_idx]
+            ret._kp[right_idx] = left_kp
+            ret._vis[right_idx] = left_vis
+
         return ret
 
     def rotate(self,

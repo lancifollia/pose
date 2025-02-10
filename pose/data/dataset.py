@@ -281,7 +281,6 @@ class CocoDataset(Dataset):
                   f"but not found {image.shape[0]}. image file path: {image_path}"
             raise RuntimeError(msg)
 
-
     def _generate_simcc_label(self, keypoints: KeyPoints)\
         -> tuple[Tensor, Tensor, Tensor]:
         target_weight = torch.zeros((self.num_keypoints, 1), dtype=torch.float32)
