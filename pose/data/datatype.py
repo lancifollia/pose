@@ -7,7 +7,7 @@ import torch
 
 
 class BBox(object):
-    def __init__(self, y: int, x: int, h:int, w:int) -> None:
+    def __init__(self, y: float, x: float, h: float, w: float) -> None:
         """
         y: left upper y coordinate
         x: left upper x coordinate
@@ -22,30 +22,31 @@ class BBox(object):
     def __repr__(self):
         return self._to_string()
 
+
     def __str__(self):
         return self._to_string()
 
     def _to_string(self) -> str:
-        return f"y({self.y}) x({self.x}) h({self.h}) w({self.w})"
+        return f"y({self.y:.2}) x({self.x:.2}) h({self.h:.2}) w({self.w:.2})"
 
-    def pad(self, hpad: int, wpad: int) -> BBox:
+    def pad(self, hpad: float, wpad: float) -> BBox:
         ret = copy.deepcopy(self)
         ret.y = ret.y + hpad
         ret.x = ret.x + wpad
         return ret
 
-    def hflip(self, image_width: int) -> BBox:
+    def hflip(self, image_width: float) -> BBox:
         ret = copy.deepcopy(self)
         ret.x = image_width - ret.x - ret.w
         return ret
 
-    def get_yxhw(self) -> list[int]:
+    def get_yxhw(self) -> list[float]:
         return [self.y, self.x, self.h, self.w]
 
-    def center(self) -> list[int]:
-        return [math.floor(self.y + 0.5 * self.h), math.floor(self.x + 0.5 * self.w)]
+    def center(self) -> list[float]:
+        return [self.y + 0.5*self.h, self.x + 0.5*self.w]
 
-    def size(self) -> list[int]:
+    def size(self) -> list[float]:
         return [self.h, self.w]
 
 
@@ -61,9 +62,9 @@ class KeyPoints(object):
             # COCO dataset keypoints annotation format: a list of length 51(=17x3)
             # - 17x3: 17 for 17 keypoints, 3 for (x, y, v(isibility))
             # - v=0: not labeled, v=1: labeled but not visible, and v=2: labeled and visible.
-            coco_kp = torch.tensor(anno, dtype=torch.int32).reshape(self.num_kp, 3)
+            coco_kp = torch.tensor(anno, dtype=torch.float32).reshape(self.num_kp, 3)
 
-            self._kp = torch.zeros(self.num_kp, 2, dtype=torch.int32)  # 2 for (y,x)
+            self._kp = torch.zeros(self.num_kp, 2, dtype=torch.float32)  # 2 for (y,x)
             # Convert COCO dataset coordinate system (x,y) to row-major (y,x)
             self._kp[:,0] = coco_kp[:,1]
             self._kp[:,1] = coco_kp[:,0]
@@ -95,28 +96,28 @@ class KeyPoints(object):
 
     def get_vis(self) -> torch.Tensor:
         vis = copy.deepcopy(self._vis)
-        vis[self._vis < self._vis_level] = 0
+        vis[self._vis < self._vis_level] = 0.0
         return vis
 
-    def get_bbox_size_and_center(self) -> tuple[int, int, int, int]:
+    def get_bbox_size_and_center(self) -> tuple[float, float, float, float]:
         valid_keypoints = self._kp[self._vis >= self._vis_level]
         bh = max(valid_keypoints[:,0]) - min(valid_keypoints[:,0])
         bw = max(valid_keypoints[:,1]) - min(valid_keypoints[:,1])
-        center_y = min(valid_keypoints[:,0]) + math.ceil(bh * 0.5)
-        center_x = min(valid_keypoints[:,1]) + math.ceil(bw * 0.5)
+        center_y = min(valid_keypoints[:,0]) + 0.5*bh
+        center_x = min(valid_keypoints[:,1]) + 0.5*bw
         return bh, bw, center_y, center_x
 
     def update_kp(self,
                   idx: int,
                   coordinate: torch.Tensor,  # (y,x)
-                  visibility: int
+                  visibility: float
                   ) -> None:
         self._kp[idx] = coordinate
         self._vis[idx] = visibility
 
     def delete_kp(self, idx: int) -> None:
-        self._kp[idx] = torch.tensor([0, 0])
-        self._vis[idx] = 0
+        self._kp[idx] = torch.tensor([0.0, 0.0])
+        self._vis[idx] = 0.0
 
     def num_visible(self) -> int:
         return int(torch.sum(self._vis >= self._vis_level))
@@ -143,17 +144,17 @@ class KeyPoints(object):
             ret.delete_kp(i)
         return ret
 
-    def pad(self, hpad: int, wpad: int) -> KeyPoints:
+    def pad(self, hpad: float, wpad: float) -> KeyPoints:
         ret = copy.deepcopy(self)
         for i in range(self.num_kp):
             if ret.is_ith_kp_visible(i) is False:
                 continue
             y, x = self._kp[i]
             new_coord = [y + hpad, x + wpad]
-            ret.update_kp(i, torch.Tensor(new_coord), int(self._vis[i]))
+            ret.update_kp(i, torch.Tensor(new_coord), float(self._vis[i]))
         return ret
 
-    def hflip(self, image_width: int) -> KeyPoints:
+    def hflip(self, image_width: float) -> KeyPoints:
         ret = copy.deepcopy(self)
 
         # Flip coordinates
@@ -162,7 +163,7 @@ class KeyPoints(object):
                 continue
             y, x = self._kp[i]
             new_coord = [y, image_width - x]
-            ret.update_kp(i, torch.Tensor(new_coord), int(self._vis[i]))
+            ret.update_kp(i, torch.Tensor(new_coord), float(self._vis[i]))
 
         # Swap left-right joints (Skip Nose(keypoint idx==0))
         for i in range(1, self.num_kp, 2):
@@ -178,9 +179,9 @@ class KeyPoints(object):
         return ret
 
     def rotate(self,
-               angle: int,            # angle in degrees
-               center: list[int],     # (y,x)
-               image_size: list[int]  # (h,w)
+               angle: int,              # angle in degrees
+               center: list[float],     # (y,x)
+               image_size: list[float]  # (h,w)
                ) -> KeyPoints:
         theta = math.pi * angle / 180  # degrees to radians
         M = torch.tensor([[math.cos(theta), math.sin(theta)],
@@ -190,9 +191,9 @@ class KeyPoints(object):
         for i in range(self.num_kp):
             if ret.is_ith_kp_visible(i) is False:
                 continue
-            dst_vec = torch.matmul(M, (self._kp[i] - c).float()).int() + c
+            dst_vec = torch.matmul(M, (self._kp[i] - c)) + c
             if 0 <= dst_vec[0] < image_size[0] and 0 <= dst_vec[1] < image_size[1]:
-                ret.update_kp(i, dst_vec, int(self._vis[i]))
+                ret.update_kp(i, dst_vec, float(self._vis[i]))
             else:
                 # keypoints outside of the image size
                 ret.delete_kp(i)
@@ -200,20 +201,20 @@ class KeyPoints(object):
 
     def reposition(self,
                    bbox: BBox,
-                   target_size: list[int],  # (h, w)
+                   target_size: list[float],  # (h, w)
                    ) -> KeyPoints:
         by, bx, bh, bw = bbox.get_yxhw()
         origin = torch.tensor([by, bx])
         th, tw = target_size
-        M = torch.tensor([[float(th)/bh, 0],  # scaling linear transform
-                          [0, float(tw)/bw]], dtype=torch.float32)
+        M = torch.tensor([[th/bh, 0],  # scaling linear transform
+                          [0, tw/bw]], dtype=torch.float32)
         ret = copy.deepcopy(self)
         for i in range(self.num_kp):
             if ret.is_ith_kp_visible(i) is False:
                 continue
-            dst_vec = torch.matmul(M, (self._kp[i] - origin).float()).int()
+            dst_vec = torch.matmul(M, (self._kp[i] - origin))
             if 0 <= dst_vec[0] < th and 0 <= dst_vec[1] < tw:
-                ret.update_kp(i, dst_vec, int(self._vis[i]))
+                ret.update_kp(i, dst_vec, float(self._vis[i]))
             else:
                 # keypoints outside of the image size
                 ret.delete_kp(i)

@@ -29,8 +29,8 @@ from pose.data.datatype import BBox, KeyPoints
 
 class ImageMeta(NamedTuple):
     fpath: str  # image file path
-    h: int      # height of the image
-    w: int      # width of the image
+    h: float    # height of the image
+    w: float    # width of the image
 
 
 class DataSample(NamedTuple):
@@ -115,7 +115,7 @@ class CocoDataset(Dataset):
             image_meta = self._image_meta[_anno['image_id']]
             ih = image_meta.h
             iw = image_meta.w
-            x, y, bw, bh = [math.floor(_x) for _x in _anno['bbox']]
+            x, y, bw, bh = [float(_x) for _x in _anno['bbox']]
             x1 = max(0, x)
             y1 = max(0, y)
             x2 = min(iw - 1, x1 + max(0, bw - 1))
@@ -167,8 +167,8 @@ class CocoDataset(Dataset):
         hpad_ratio = 0.0
         wpad_ratio = 0.2
         image_size = [image_meta.h, image_meta.w]
-        hpad = math.floor(image_meta.h * hpad_ratio)
-        wpad = math.floor(image_meta.w * wpad_ratio)
+        hpad = image_meta.h * hpad_ratio
+        wpad = image_meta.w * wpad_ratio
         image_size = [image_size[0] + hpad * 2, image_size[1] + wpad * 2]
 
         bbox = sample.bbox.pad(hpad, wpad)
@@ -243,15 +243,15 @@ class CocoDataset(Dataset):
         bh, bw, center_y, center_x = dst_keypoints.get_bbox_size_and_center()
 
         scale_factor = 1.5
-        bh = math.floor(bh * scale_factor)
+        bh = bh * scale_factor
         half_bh = min(bh * 0.5, center_y, ih - center_y)
-        bw = math.floor(bw * scale_factor)
+        bw = bw * scale_factor
         half_bw = min(bw * 0.5, center_x, iw - center_x)
-        bh = math.floor(half_bh * 2)
-        bw = math.floor(half_bw * 2)
+        bh = half_bh * 2
+        bw = half_bw * 2
 
-        y1 = math.floor(center_y - half_bh)
-        x1 = math.floor(center_x - half_bw)
+        y1 = center_y - half_bh
+        x1 = center_x - half_bw
 
         bbox = BBox(y=y1, x=x1, h=bh, w=bw)
 
@@ -290,8 +290,10 @@ class CocoDataset(Dataset):
             ky, kx = keypoints.get_kp(kp_idx)
 
             # Check that any part of the gaussian is in-bounds
-            uly, ulx = math.floor(ky - buffer), math.floor(kx - buffer)
-            bry, brx = math.floor(ky + buffer + 1), math.floor(kx + buffer + 1)
+            uly = ky - buffer
+            ulx = kx - buffer
+            bry = ky + buffer + 1
+            brx = kx + buffer + 1
             if uly < 0 or ulx < 0 or bry > h or brx > w:
                 target_weight[kp_idx] = 0.0
 
@@ -299,10 +301,10 @@ class CocoDataset(Dataset):
                 continue
 
             # Space-aware Gaussian label smoothing
-            mu_y = ky * sf + math.floor(sf / 2) - 1
-            mu_x = kx * sf + math.floor(sf / 2) - 1
-            y = torch.arange(0, math.floor(h * sf), 1, dtype=torch.float32)
-            x = torch.arange(0, math.floor(w * sf), 1, dtype=torch.float32)
+            mu_y = ky * sf
+            mu_x = kx * sf
+            y = torch.arange(0, int(h * sf), 1, dtype=torch.float32)
+            x = torch.arange(0, int(w * sf), 1, dtype=torch.float32)
             denom = sigma * np.sqrt(np.pi * 2)
             target_y[kp_idx] = (torch.exp(- ((y - mu_y) ** 2) / (2 * sigma ** 2))) / denom
             target_x[kp_idx] = (torch.exp(- ((x - mu_x) ** 2) / (2 * sigma ** 2))) / denom
@@ -340,7 +342,7 @@ class CocoDataset(Dataset):
             eval_target_image_ids.add(image_id)
             for pred in preds:
                 # (17,2) pred -> (17,3)
-                kp = torch.zeros(17, 3, dtype=torch.int)
+                kp = torch.zeros(17, 3, dtype=torch.float)
                 # cocoapi uses xy coordinates.
                 if yx2xy:
                     kp[:,0] = pred[:,1]
