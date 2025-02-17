@@ -69,6 +69,7 @@ class CocoDataset(Dataset):
         if data_aug_cfg is None:
             self.do_data_augment = False
             self.flip_proba = 0.0
+            self.rotate_proba = 0.0
             self.rotate_factor = 0
             self.scale_factor = 0.0
             self.half_body_proba = 0.0
@@ -76,6 +77,7 @@ class CocoDataset(Dataset):
         else:
             self.do_data_augment = True
             self.flip_proba = data_aug_cfg.FLIP_PROBA
+            self.rotate_proba = data_aug_cfg.ROTATE_PROBA
             self.rotate_factor = data_aug_cfg.ROTATE_FACTOR
             self.scale_factor = data_aug_cfg.SCALE_FACTOR
             self.half_body_proba = data_aug_cfg.HALF_BODY_PROBA
@@ -216,27 +218,17 @@ class CocoDataset(Dataset):
         scale = 1.25
 
         if self.do_data_augment:
-            if np.random.random() < self.half_body_proba:
+            if np.random.random() <= self.half_body_proba:
                 half_body = True
-            if np.random.random() < self.flip_proba:
+            if np.random.random() <= self.flip_proba:
                 hflip = True
-            rotate = np.clip(np.random.randn() * self.rotate_factor,
-                             self.rotate_factor * -2, self.rotate_factor * 2)
+            if random.random() <= self.rotate_proba:
+                rotate = np.clip(np.random.randn() * self.rotate_factor,
+                                 self.rotate_factor * -2, self.rotate_factor * 2)
             scale = scale * np.clip(np.random.randn() * self.scale_factor + 1,
                                     1 - self.scale_factor, 1 + self.scale_factor)
 
         return self.get_item(idx, half_body, hflip, rotate, scale)
-
-    def _get_rotate_factor(self, image_width: int, center_x: int) -> float:
-        """Retrict rotating factor when side margin is small."""
-        side_margin = min(center_x, image_width - center_x)
-        ratio = float(side_margin) / image_width
-        if ratio < 0.1:
-            return 5
-        elif ratio < 0.2:
-            return 10
-        else:
-            return self.rotate_factor
 
     def _half_body_transform(self,
                              keypoints: KeyPoints,

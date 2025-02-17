@@ -33,6 +33,8 @@ _C.DATA_TRAIN.IMAGE_DIR = "/home/dev/data/coco/images/train2017/"
 _C.DATA_TRAIN.DATA_AUG = CN()
 # Horizontal flipping trigering probability
 _C.DATA_TRAIN.DATA_AUG.FLIP_PROBA = 0.5
+# Image rotation trigering probability
+_C.DATA_TRAIN.DATA_AUG.ROTATE_PROBA = 0.6
 # Image rotating factor: angle in degrees (-180, 180)
 _C.DATA_TRAIN.DATA_AUG.ROTATE_FACTOR = 40
 # Image rescaling factor: ratio (0.0:do not scaling, 1.0:upto 200% scaling)
