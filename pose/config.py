@@ -34,9 +34,9 @@ _C.DATA_TRAIN.DATA_AUG = CN()
 # Horizontal flipping trigering probability
 _C.DATA_TRAIN.DATA_AUG.FLIP_PROBA = 0.5
 # Image rotating factor: angle in degrees (-180, 180)
-_C.DATA_TRAIN.DATA_AUG.ROTATE_FACTOR = 30
+_C.DATA_TRAIN.DATA_AUG.ROTATE_FACTOR = 40
 # Image rescaling factor: ratio (0.0:do not scaling, 1.0:upto 200% scaling)
-_C.DATA_TRAIN.DATA_AUG.SCALE_FACTOR = 0.25
+_C.DATA_TRAIN.DATA_AUG.SCALE_FACTOR = 0.3
 # Half body transforming trigering probability
 _C.DATA_TRAIN.DATA_AUG.HALF_BODY_PROBA = 0.0
 # Half body transforming trigering minimum number of keypoints
