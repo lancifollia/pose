@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-import math
-
 import torch
 from loguru import logger
 from torchvision.transforms.v2 import InterpolationMode
@@ -18,7 +16,7 @@ class RescaleImgDiv255(object):
 
 def rotate_image(image: torch.Tensor,
                  rotate: float,
-                 center: list[int]  # (y,x)
+                 center: list[float]  # (y,x)
                  ) -> torch.Tensor:
     # Change center coordinate (y,x) -> (x,y)
     # torchvision.transforms.affine() uses xy coordinate.
@@ -29,9 +27,9 @@ def rotate_image(image: torch.Tensor,
 
 def crop_image(image: torch.Tensor,
                scale: float,
-               center: list[int],          # (y, x)
-               bbox_size: list[int],       # (h, w)
-               out_image_size: list[int],  # (h, w)
+               center: list[float],          # (y, x)
+               bbox_size: list[float],       # (h, w)
+               out_image_size: list[float],  # (h, w)
                ) -> tuple[torch.Tensor, BBox]:
     cy, cx = center
     _bh, _bw = bbox_size
@@ -46,12 +44,10 @@ def crop_image(image: torch.Tensor,
     elif bw < bh * aspect_ratio:
         bw = bh * aspect_ratio
 
-    top = math.floor(cy - bh * 0.5)
-    left = math.floor(cx - bw * 0.5)
-    bh = math.floor(bh)
-    bw = math.floor(bw)
+    top = cy - 0.5*bh
+    left = cx - 0.5*bw
 
-    image = crop(image, top=top, left=left, height=bh, width=bw)
+    image = crop(image, top=int(top), left=int(left), height=int(bh), width=int(bw))
     image = resize(image, size=out_image_size,
                    interpolation=InterpolationMode.BILINEAR)
 
@@ -61,9 +57,9 @@ def crop_image(image: torch.Tensor,
     return image, new_bbox
 
 
-def transform_bbox_pred_to_image_pred(kp: torch.Tensor,         # (17,2(=y,x))
-                                      real_bbox: list[int],     # (y,x,h,w)
-                                      pred_bbox_size: list[int] # (h,w)
+def transform_bbox_pred_to_image_pred(kp: torch.Tensor,           # (17,2(=y,x))
+                                      real_bbox: list[float],     # (y,x,h,w)
+                                      pred_bbox_size: list[float] # (h,w)
                                       ) -> torch.Tensor:
     ret = torch.zeros_like(kp)
     ry, rx, rh, rw = real_bbox

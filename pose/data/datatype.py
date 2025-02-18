@@ -204,7 +204,7 @@ class KeyPoints(object):
                    target_size: list[float],  # (h, w)
                    ) -> KeyPoints:
         by, bx, bh, bw = bbox.get_yxhw()
-        origin = torch.tensor([by, bx])
+        origin = torch.tensor([by, bx], dtype=torch.float32)
         th, tw = target_size
         M = torch.tensor([[th/bh, 0],  # scaling linear transform
                           [0, tw/bw]], dtype=torch.float32)

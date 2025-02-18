@@ -116,9 +116,9 @@ def validate_simcc(cfg: CfgNode,
             _, preds_y = output_y.max(2, keepdim=True)
             _, preds_x = output_x.max(2, keepdim=True)
 
-            kps = torch.zeros([input.size(0), num_kp, 2], dtype=torch.int)  # 2: (y,x)
-            kps[:,:,0] = torch.squeeze(torch.true_divide(preds_y, simcc_split_factor)).int()
-            kps[:,:,1] = torch.squeeze(torch.true_divide(preds_x, simcc_split_factor)).int()
+            kps = torch.zeros([input.size(0), num_kp, 2], dtype=torch.float32)  # 2: (y,x)
+            kps[:,:,0] = torch.squeeze(torch.true_divide(preds_y, simcc_split_factor))
+            kps[:,:,1] = torch.squeeze(torch.true_divide(preds_x, simcc_split_factor))
             real_bboxes = meta["bbox"]
             image_ids = meta["image_id"]
             for b_idx in range(input.size(0)):

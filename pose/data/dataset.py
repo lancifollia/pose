@@ -3,7 +3,6 @@ Dataset modules
 """
 
 import copy
-import math
 import os
 from collections import OrderedDict
 from collections.abc import Callable
@@ -173,7 +172,7 @@ class CocoDataset(Dataset):
 
         bbox = sample.bbox.pad(hpad, wpad)
         image = self._read_image(image_path)  # (c,h,w)
-        image = pad(image, (wpad, wpad, hpad, hpad))  # (left pad, right pad, top pad, bottom pad)
+        image = pad(image, (int(wpad), int(wpad), int(hpad), int(hpad)))  # (left pad, right pad, top pad, bottom pad)
 
         keypoints = sample.keypoints.pad(hpad, wpad)
 
@@ -222,7 +221,7 @@ class CocoDataset(Dataset):
                 half_body = True
             if np.random.random() <= self.flip_proba:
                 hflip = True
-            if random.random() <= self.rotate_proba:
+            if np.random.random() <= self.rotate_proba:
                 rotate = np.clip(np.random.randn() * self.rotate_factor,
                                  self.rotate_factor * -2, self.rotate_factor * 2)
             scale = scale * np.clip(np.random.randn() * self.scale_factor + 1,
@@ -232,7 +231,7 @@ class CocoDataset(Dataset):
 
     def _half_body_transform(self,
                              keypoints: KeyPoints,
-                             image_size: list[int]
+                             image_size: list[float]
                              ) -> tuple[KeyPoints, BBox]:
         logger.debug("half(upper) body transform")
 
@@ -342,7 +341,7 @@ class CocoDataset(Dataset):
             eval_target_image_ids.add(image_id)
             for pred in preds:
                 # (17,2) pred -> (17,3)
-                kp = torch.zeros(17, 3, dtype=torch.float)
+                kp = torch.zeros(17, 3, dtype=torch.float32)
                 # cocoapi uses xy coordinates.
                 if yx2xy:
                     kp[:,0] = pred[:,1]
