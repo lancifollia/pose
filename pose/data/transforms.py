@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import math
+
 import torch
 from loguru import logger
 from torchvision.transforms.v2 import InterpolationMode
@@ -27,27 +29,27 @@ def rotate_image(image: torch.Tensor,
 
 def crop_image(image: torch.Tensor,
                scale: float,
-               center: list[float],          # (y, x)
-               bbox_size: list[float],       # (h, w)
-               out_image_size: list[float],  # (h, w)
+               center: list[float],        # (y, x)
+               bbox_size: list[int],       # (h, w)
+               out_image_size: list[int],  # (h, w)
                ) -> tuple[torch.Tensor, BBox]:
     cy, cx = center
     _bh, _bw = bbox_size
     oh, ow = out_image_size
     aspect_ratio = float(ow) / oh
 
-    bh = _bh * scale
-    bw = _bw * scale
+    bh = math.floor(_bh * scale)
+    bw = math.floor(_bw * scale)
 
     if bw > bh * aspect_ratio:
-        bh = bw * (aspect_ratio ** -1)
+        bh = math.floor(bw * (aspect_ratio ** -1))
     elif bw < bh * aspect_ratio:
-        bw = bh * aspect_ratio
+        bw = math.floor(bh * aspect_ratio)
 
-    top = cy - 0.5*bh
-    left = cx - 0.5*bw
+    top = math.floor(cy - 0.5*bh)
+    left = math.floor(cx - 0.5*bw)
 
-    image = crop(image, top=int(top), left=int(left), height=int(bh), width=int(bw))
+    image = crop(image, top=top, left=left, height=bh, width=bw)
     image = resize(image, size=out_image_size,
                    interpolation=InterpolationMode.BILINEAR)
 

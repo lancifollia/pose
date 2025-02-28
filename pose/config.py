@@ -39,10 +39,6 @@ _C.DATA_TRAIN.DATA_AUG.ROTATE_PROBA = 0.6
 _C.DATA_TRAIN.DATA_AUG.ROTATE_FACTOR = 40
 # Image rescaling factor: ratio (0.0:do not scaling, 1.0:upto 200% scaling)
 _C.DATA_TRAIN.DATA_AUG.SCALE_FACTOR = 0.3
-# Half body transforming trigering probability
-_C.DATA_TRAIN.DATA_AUG.HALF_BODY_PROBA = 0.0
-# Half body transforming trigering minimum number of keypoints
-_C.DATA_TRAIN.DATA_AUG.HALF_BODY_MIN_KEYPOINTS = 8
 
 
 """Validation Data"""

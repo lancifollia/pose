@@ -3,6 +3,7 @@ Dataset modules
 """
 
 import copy
+import math
 import os
 from collections import OrderedDict
 from collections.abc import Callable
@@ -28,8 +29,8 @@ from pose.data.datatype import BBox, KeyPoints
 
 class ImageMeta(NamedTuple):
     fpath: str  # image file path
-    h: float    # height of the image
-    w: float    # width of the image
+    h: int      # height of the image
+    w: int      # width of the image
 
 
 class DataSample(NamedTuple):
@@ -71,16 +72,12 @@ class CocoDataset(Dataset):
             self.rotate_proba = 0.0
             self.rotate_factor = 0
             self.scale_factor = 0.0
-            self.half_body_proba = 0.0
-            self.half_body_min_kps = 1e+10
         else:
             self.do_data_augment = True
             self.flip_proba = data_aug_cfg.FLIP_PROBA
             self.rotate_proba = data_aug_cfg.ROTATE_PROBA
             self.rotate_factor = data_aug_cfg.ROTATE_FACTOR
             self.scale_factor = data_aug_cfg.SCALE_FACTOR
-            self.half_body_proba = data_aug_cfg.HALF_BODY_PROBA
-            self.half_body_min_kps = data_aug_cfg.HALF_BODY_MIN_KEYPOINTS
         logger.info(f"Data augmentation: {self.do_data_augment}")
 
         # load image meta data
@@ -114,7 +111,7 @@ class CocoDataset(Dataset):
             image_meta = self._image_meta[_anno['image_id']]
             ih = image_meta.h
             iw = image_meta.w
-            x, y, bw, bh = [float(_x) for _x in _anno['bbox']]
+            x, y, bw, bh = _anno['bbox']
             x1 = max(0, x)
             y1 = max(0, y)
             x2 = min(iw - 1, x1 + max(0, bw - 1))
@@ -154,7 +151,6 @@ class CocoDataset(Dataset):
 
     def get_item(self,
                  idx: int,
-                 half_body: bool = False,
                  hflip: bool = False,
                  rotate: int = 0,
                  scale: float = 1.25
@@ -166,8 +162,8 @@ class CocoDataset(Dataset):
         hpad_ratio = 0.0
         wpad_ratio = 0.2
         image_size = [image_meta.h, image_meta.w]
-        hpad = image_meta.h * hpad_ratio
-        wpad = image_meta.w * wpad_ratio
+        hpad = math.floor(image_meta.h * hpad_ratio)
+        wpad = math.floor(image_meta.w * wpad_ratio)
         image_size = [image_size[0] + hpad * 2, image_size[1] + wpad * 2]
 
         bbox = sample.bbox.pad(hpad, wpad)
@@ -175,11 +171,6 @@ class CocoDataset(Dataset):
         image = pad(image, (int(wpad), int(wpad), int(hpad), int(hpad)))  # (left pad, right pad, top pad, bottom pad)
 
         keypoints = sample.keypoints.pad(hpad, wpad)
-
-        if half_body:
-            if keypoints.num_visible() > self.half_body_min_kps:
-                keypoints, bbox = self._half_body_transform(keypoints, image_size)
-                logger.debug("the image is half-body transformed.")
 
         if hflip is True:
             image = image.flip(2)
@@ -211,14 +202,11 @@ class CocoDataset(Dataset):
 
     def __getitem__(self, idx: int)\
         -> tuple[Tensor, Tensor, Tensor, Tensor, Dict]:
-        half_body = False
         hflip = False
         rotate = 0
         scale = 1.25
 
         if self.do_data_augment:
-            if np.random.random() <= self.half_body_proba:
-                half_body = True
             if np.random.random() <= self.flip_proba:
                 hflip = True
             if np.random.random() <= self.rotate_proba:
@@ -227,34 +215,7 @@ class CocoDataset(Dataset):
             scale = scale * np.clip(np.random.randn() * self.scale_factor + 1,
                                     1 - self.scale_factor, 1 + self.scale_factor)
 
-        return self.get_item(idx, half_body, hflip, rotate, scale)
-
-    def _half_body_transform(self,
-                             keypoints: KeyPoints,
-                             image_size: list[float]
-                             ) -> tuple[KeyPoints, BBox]:
-        logger.debug("half(upper) body transform")
-
-        dst_keypoints = keypoints.remove_lowerbody_kps()
-        logger.debug(f"visible kps: {dst_keypoints.num_visible()}")
-
-        iw, ih = image_size
-        bh, bw, center_y, center_x = dst_keypoints.get_bbox_size_and_center()
-
-        scale_factor = 1.5
-        bh = bh * scale_factor
-        half_bh = min(bh * 0.5, center_y, ih - center_y)
-        bw = bw * scale_factor
-        half_bw = min(bw * 0.5, center_x, iw - center_x)
-        bh = half_bh * 2
-        bw = half_bw * 2
-
-        y1 = center_y - half_bh
-        x1 = center_x - half_bw
-
-        bbox = BBox(y=y1, x=x1, h=bh, w=bw)
-
-        return dst_keypoints, bbox
+        return self.get_item(idx, hflip, rotate, scale)
 
     def _read_image(self, image_path: str) -> Tensor:
         """

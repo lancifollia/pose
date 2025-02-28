@@ -7,7 +7,7 @@ import torch
 
 
 class BBox(object):
-    def __init__(self, y: float, x: float, h: float, w: float) -> None:
+    def __init__(self, y: int, x: int, h: int, w: int) -> None:
         """
         y: left upper y coordinate
         x: left upper x coordinate
@@ -27,26 +27,26 @@ class BBox(object):
         return self._to_string()
 
     def _to_string(self) -> str:
-        return f"y({self.y:.2}) x({self.x:.2}) h({self.h:.2}) w({self.w:.2})"
+        return f"y({self.y}) x({self.x}) h({self.h}) w({self.w})"
 
-    def pad(self, hpad: float, wpad: float) -> BBox:
+    def pad(self, hpad: int, wpad: int) -> BBox:
         ret = copy.deepcopy(self)
         ret.y = ret.y + hpad
         ret.x = ret.x + wpad
         return ret
 
-    def hflip(self, image_width: float) -> BBox:
+    def hflip(self, image_width: int) -> BBox:
         ret = copy.deepcopy(self)
         ret.x = image_width - ret.x - ret.w
         return ret
 
-    def get_yxhw(self) -> list[float]:
+    def get_yxhw(self) -> list[int]:
         return [self.y, self.x, self.h, self.w]
 
     def center(self) -> list[float]:
         return [self.y + 0.5*self.h, self.x + 0.5*self.w]
 
-    def size(self) -> list[float]:
+    def size(self) -> list[int]:
         return [self.h, self.w]
 
 
@@ -99,14 +99,6 @@ class KeyPoints(object):
         vis[self._vis < self._vis_level] = 0.0
         return vis
 
-    def get_bbox_size_and_center(self) -> tuple[float, float, float, float]:
-        valid_keypoints = self._kp[self._vis >= self._vis_level]
-        bh = max(valid_keypoints[:,0]) - min(valid_keypoints[:,0])
-        bw = max(valid_keypoints[:,1]) - min(valid_keypoints[:,1])
-        center_y = min(valid_keypoints[:,0]) + 0.5*bh
-        center_x = min(valid_keypoints[:,1]) + 0.5*bw
-        return bh, bw, center_y, center_x
-
     def update_kp(self,
                   idx: int,
                   coordinate: torch.Tensor,  # (y,x)
@@ -122,29 +114,7 @@ class KeyPoints(object):
     def num_visible(self) -> int:
         return int(torch.sum(self._vis >= self._vis_level))
 
-    def num_upperbody_visible(self) -> int:
-        return int(torch.sum(self._vis[:self.upperbody_idx] >= self._vis_level))
-
-    def num_lowerbody_visible(self) -> int:
-        return int(torch.sum(self._vis[self.lowerbody_idx:] >= self._vis_level))
-
-    def remove_upperbody_kps(self) -> KeyPoints:
-        ret = copy.deepcopy(self)
-        for i in range(self.lowerbody_idx):
-            if ret.is_ith_kp_visible(i) is False:
-                continue
-            ret.delete_kp(i)
-        return ret
-
-    def remove_lowerbody_kps(self) -> KeyPoints:
-        ret = copy.deepcopy(self)
-        for i in range(self.upperbody_idx, self.num_kp):
-            if ret.is_ith_kp_visible(i) is False:
-                continue
-            ret.delete_kp(i)
-        return ret
-
-    def pad(self, hpad: float, wpad: float) -> KeyPoints:
+    def pad(self, hpad: int, wpad: int) -> KeyPoints:
         ret = copy.deepcopy(self)
         for i in range(self.num_kp):
             if ret.is_ith_kp_visible(i) is False:
@@ -154,7 +124,7 @@ class KeyPoints(object):
             ret.update_kp(i, torch.Tensor(new_coord), float(self._vis[i]))
         return ret
 
-    def hflip(self, image_width: float) -> KeyPoints:
+    def hflip(self, image_width: int) -> KeyPoints:
         ret = copy.deepcopy(self)
 
         # Flip coordinates
@@ -181,7 +151,7 @@ class KeyPoints(object):
     def rotate(self,
                angle: int,              # angle in degrees
                center: list[float],     # (y,x)
-               image_size: list[float]  # (h,w)
+               image_size: list[int]    # (h,w)
                ) -> KeyPoints:
         theta = math.pi * angle / 180  # degrees to radians
         M = torch.tensor([[math.cos(theta), math.sin(theta)],
