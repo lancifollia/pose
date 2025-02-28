@@ -191,10 +191,10 @@ class CocoDataset(Dataset):
 
         target_y, target_x, target_weight = self._generate_simcc_label(keypoints)
         meta = {"image": image,
-                "image_id": torch.tensor(sample.image_id, dtype=torch.int32),
-                "anno_id": torch.tensor(sample.id, dtype=torch.int32),
-                "origin_bbox": torch.tensor(sample.bbox.get_yxhw()),
-                "bbox": torch.tensor(bbox.pad(hpad * -1, wpad * -1).get_yxhw()),
+                "image_id": torch.tensor(sample.image_id).type(torch.long),
+                "anno_id": torch.tensor(sample.id).type(torch.long),
+                "origin_bbox": torch.tensor(sample.bbox.get_yxhw()).type(torch.long),
+                "bbox": torch.tensor(bbox.pad(hpad * -1, wpad * -1).get_yxhw()).type(torch.long),
                 "keypoints": keypoints.get_kps(),
                 "vis": keypoints.get_vis()}
 
