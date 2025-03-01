@@ -26,26 +26,28 @@ class KLDiscretLoss(nn.Module):
         return loss
 
     def forward(self,
-                output_y: Tensor, output_x: Tensor,
-                target_y: Tensor, target_x: Tensor,
+                output_x: Tensor,
+                output_y: Tensor,
+                target_x: Tensor,
+                target_y: Tensor,
                 target_weight: Tensor
                 ) -> Tensor:
         num_kp = output_y.shape[1]  # (b, k, (c h w))
         loss = torch.tensor(0.).cuda()
 
         for idx in range(num_kp):
-            _output_y = output_y[:,idx]
             _output_x = output_x[:,idx]
-            _target_y = target_y[:,idx]
+            _output_y = output_y[:,idx]
             _target_x = target_x[:,idx]
+            _target_y = target_y[:,idx]
             weight = target_weight[:,idx].squeeze()  # (b, k, 1) -> (b, k)
 
             if self.reduction == "mean":
-                loss += self.criterion(_output_y, _target_y).mul(weight).mean()
                 loss += self.criterion(_output_x, _target_x).mul(weight).mean()
+                loss += self.criterion(_output_y, _target_y).mul(weight).mean()
             elif self.reduction == "weighted_mean":
-                loss += self.criterion(_output_y, _target_y).mul(weight).sum() * weight.sum()**-1
                 loss += self.criterion(_output_x, _target_x).mul(weight).sum() * weight.sum()**-1
+                loss += self.criterion(_output_y, _target_y).mul(weight).sum() * weight.sum()**-1
             else:
                 raise RuntimeError(f"Invalid reduction type: {self.reduction}")
 

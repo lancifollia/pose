@@ -1,52 +1,51 @@
 from __future__ import annotations
 
 import copy
-import math
 
-import torch
+import numpy as np
+import numpy.typing as npt
 
 
 class BBox(object):
-    def __init__(self, y: int, x: int, h: int, w: int) -> None:
+    def __init__(self, x: int, y: int, w: int, h: int) -> None:
         """
-        y: left upper y coordinate
         x: left upper x coordinate
-        h: height of the bounding box
+        y: left upper y coordinate
         w: widht of the bounding box
+        h: height of the bounding box
         """
-        self.y = y
         self.x = x
-        self.h = h
+        self.y = y
         self.w = w
+        self.h = h
 
     def __repr__(self):
         return self._to_string()
-
 
     def __str__(self):
         return self._to_string()
 
     def _to_string(self) -> str:
-        return f"y({self.y}) x({self.x}) h({self.h}) w({self.w})"
-
-    def pad(self, hpad: int, wpad: int) -> BBox:
-        ret = copy.deepcopy(self)
-        ret.y = ret.y + hpad
-        ret.x = ret.x + wpad
-        return ret
+        return f"x({self.x}) y({self.y}) w({self.w}) h({self.h})"
 
     def hflip(self, image_width: int) -> BBox:
         ret = copy.deepcopy(self)
         ret.x = image_width - ret.x - ret.w
         return ret
 
-    def get_yxhw(self) -> list[int]:
-        return [self.y, self.x, self.h, self.w]
+    def get_xywh(self) -> list[int]:
+        return [self.x, self.y, self.w, self.h]
 
-    def center(self) -> list[float]:
+    def center_xy(self) -> list[float]:
+        return [self.x + 0.5*self.w, self.y + 0.5*self.h]
+
+    def center_yx(self) -> list[float]:
         return [self.y + 0.5*self.h, self.x + 0.5*self.w]
 
-    def size(self) -> list[int]:
+    def size_wh(self) -> list[int]:
+        return [self.w, self.h]
+
+    def size_hw(self) -> list[int]:
         return [self.h, self.w]
 
 
@@ -62,13 +61,8 @@ class KeyPoints(object):
             # COCO dataset keypoints annotation format: a list of length 51(=17x3)
             # - 17x3: 17 for 17 keypoints, 3 for (x, y, v(isibility))
             # - v=0: not labeled, v=1: labeled but not visible, and v=2: labeled and visible.
-            coco_kp = torch.tensor(anno, dtype=torch.float32).reshape(self.num_kp, 3)
-
-            self._kp = torch.zeros(self.num_kp, 2, dtype=torch.float32)  # 2 for (y,x)
-            # Convert COCO dataset coordinate system (x,y) to row-major (y,x)
-            self._kp[:,0] = coco_kp[:,1]
-            self._kp[:,1] = coco_kp[:,0]
-
+            coco_kp = np.array(anno, dtype=np.float32).reshape(self.num_kp, 3)
+            self._kp = coco_kp[:,:2]
             self._vis = coco_kp[:,2]
             self._vis_level = 1  # default visibility level
         else:
@@ -78,51 +72,31 @@ class KeyPoints(object):
     def is_ith_kp_visible(self, idx: int) -> bool:
         return bool(self._vis[idx] >= self._vis_level)
 
-    def get_kp(self, idx: int) -> torch.Tensor:
+    def get_kp(self, idx: int) -> npt.NDArray:
         return self._kp[idx]
 
-    def get_kps(self, coord: str = "yx") -> torch.Tensor:
-        """Dump all keypoints"""
-        if coord == "yx":
-            return copy.deepcopy(self._kp)
-        elif coord == "xy":
-            ret = torch.zeros(self.num_kp, 2)
-            ret[:,0] = self._kp[:,1]
-            ret[:,1] = self._kp[:,0]
-            return ret
-        else:
-            msg = f"get_kps() expected coord to be one of 'yx', or 'xy' but found '{coord}'"
-            raise RuntimeError(msg)
+    def get_kps(self) -> npt.NDArray:
+        return copy.deepcopy(self._kp)
 
-    def get_vis(self) -> torch.Tensor:
+    def get_vis(self) -> npt.NDArray:
         vis = copy.deepcopy(self._vis)
         vis[self._vis < self._vis_level] = 0.0
         return vis
 
     def update_kp(self,
                   idx: int,
-                  coordinate: torch.Tensor,  # (y,x)
+                  pt_xy: npt.NDArray,  # (x,y)
                   visibility: float
                   ) -> None:
-        self._kp[idx] = coordinate
+        self._kp[idx] = pt_xy
         self._vis[idx] = visibility
 
     def delete_kp(self, idx: int) -> None:
-        self._kp[idx] = torch.tensor([0.0, 0.0])
+        self._kp[idx] = np.array([0.0, 0.0], dtype=np.float32)
         self._vis[idx] = 0.0
 
     def num_visible(self) -> int:
-        return int(torch.sum(self._vis >= self._vis_level))
-
-    def pad(self, hpad: int, wpad: int) -> KeyPoints:
-        ret = copy.deepcopy(self)
-        for i in range(self.num_kp):
-            if ret.is_ith_kp_visible(i) is False:
-                continue
-            y, x = self._kp[i]
-            new_coord = [y + hpad, x + wpad]
-            ret.update_kp(i, torch.Tensor(new_coord), float(self._vis[i]))
-        return ret
+        return int(np.sum(self._vis >= self._vis_level))
 
     def hflip(self, image_width: int) -> KeyPoints:
         ret = copy.deepcopy(self)
@@ -131,9 +105,9 @@ class KeyPoints(object):
         for i in range(self.num_kp):
             if ret.is_ith_kp_visible(i) is False:
                 continue
-            y, x = self._kp[i]
-            new_coord = [y, image_width - x]
-            ret.update_kp(i, torch.Tensor(new_coord), float(self._vis[i]))
+            x, y = self._kp[i]
+            new_coord = [image_width - x, y]
+            ret.update_kp(i, np.array(new_coord, dtype=np.float32), float(self._vis[i]))
 
         # Swap left-right joints (Skip Nose(keypoint idx==0))
         for i in range(1, self.num_kp, 2):
@@ -145,47 +119,15 @@ class KeyPoints(object):
             ret._vis[left_idx] = ret._vis[right_idx]
             ret._kp[right_idx] = left_kp
             ret._vis[right_idx] = left_vis
-
         return ret
 
-    def rotate(self,
-               angle: int,              # angle in degrees
-               center: list[float],     # (y,x)
-               image_size: list[int]    # (h,w)
-               ) -> KeyPoints:
-        theta = math.pi * angle / 180  # degrees to radians
-        M = torch.tensor([[math.cos(theta), math.sin(theta)],
-                          [-1 * math.sin(theta), math.cos(theta)]])
-        c = torch.tensor(center)
+    def affine_transform(self, trans: npt.NDArray) -> KeyPoints:
         ret = copy.deepcopy(self)
         for i in range(self.num_kp):
             if ret.is_ith_kp_visible(i) is False:
                 continue
-            dst_vec = torch.matmul(M, (self._kp[i] - c)) + c
-            if 0 <= dst_vec[0] < image_size[0] and 0 <= dst_vec[1] < image_size[1]:
-                ret.update_kp(i, dst_vec, float(self._vis[i]))
-            else:
-                # keypoints outside of the image size
-                ret.delete_kp(i)
-        return ret
-
-    def reposition(self,
-                   bbox: BBox,
-                   target_size: list[float],  # (h, w)
-                   ) -> KeyPoints:
-        by, bx, bh, bw = bbox.get_yxhw()
-        origin = torch.tensor([by, bx], dtype=torch.float32)
-        th, tw = target_size
-        M = torch.tensor([[th/bh, 0],  # scaling linear transform
-                          [0, tw/bw]], dtype=torch.float32)
-        ret = copy.deepcopy(self)
-        for i in range(self.num_kp):
-            if ret.is_ith_kp_visible(i) is False:
-                continue
-            dst_vec = torch.matmul(M, (self._kp[i] - origin))
-            if 0 <= dst_vec[0] < th and 0 <= dst_vec[1] < tw:
-                ret.update_kp(i, dst_vec, float(self._vis[i]))
-            else:
-                # keypoints outside of the image size
-                ret.delete_kp(i)
+            pt = ret._kp[i]
+            new_pt = np.array([pt[0], pt[1], 1.]).T
+            new_pt = np.dot(trans, new_pt)
+            ret._kp[i] = new_pt
         return ret

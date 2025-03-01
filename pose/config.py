@@ -51,8 +51,8 @@ _C.DATA_VAL.DATA_AUG = None
 """Model"""
 _C.MODEL = CN()
 _C.MODEL.NAME = "resnet"
-# Neural network input image size. [height, width]
-_C.MODEL.INPUT_SIZE = [256, 192]
+# Neural network input image size. [width, height]
+_C.MODEL.INPUT_SIZE_WH = [192, 256]
 _C.MODEL.LOSS_TYPE = "KLDiscretLoss"
 
 """Model.Extra"""

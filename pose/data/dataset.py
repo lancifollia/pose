@@ -3,34 +3,31 @@ Dataset modules
 """
 
 import copy
-import math
 import os
 from collections import OrderedDict
-from collections.abc import Callable
 from contextlib import redirect_stdout
 from pathlib import Path
-from typing import Dict, Optional, NamedTuple
+from typing import Any, Dict, Optional, NamedTuple
 
+import cv2
 import numpy as np
 import orjson
 import torch
-import torchvision
 from loguru import logger
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 from torch import Tensor
-from torch.nn.functional import pad
 from torch.utils.data import Dataset
 from yacs.config import CfgNode
 
-from pose.data import transforms
 from pose.data.datatype import BBox, KeyPoints
+from pose.data.transforms import get_affine_transform
 
 
 class ImageMeta(NamedTuple):
     fpath: str  # image file path
-    h: int      # height of the image
     w: int      # width of the image
+    h: int      # height of the image
 
 
 class DataSample(NamedTuple):
@@ -44,7 +41,7 @@ class CocoDataset(Dataset):
     def __init__(self,
                  cfg: CfgNode,
                  is_train: bool,
-                 transform: Optional[Callable[[Tensor], Tensor]] = None
+                 transform: Optional[Any] = None
                  ) -> None:
         self._init_coco_info()
         data_cfg = cfg.DATA_TRAIN if is_train else cfg.DATA_VAL
@@ -56,8 +53,8 @@ class CocoDataset(Dataset):
         self.image_dir = data_cfg.IMAGE_DIR
         logger.info(f"Image file directory: {self.image_dir}")
 
-        self.nn_input_size = cfg.MODEL.INPUT_SIZE
-        logger.info(f"NN input size(height, width): {self.nn_input_size}")
+        self.nn_input_size_wh = cfg.MODEL.INPUT_SIZE_WH
+        logger.info(f"NN input size(width, height): {self.nn_input_size_wh}")
         self.min_keypoints=cfg.DATA_COMMON.MIN_KEYPOINTS
 
         self.simcc_split_factor = cfg.MODEL.EXTRA.SIMCC_SPLIT_FACTOR
@@ -84,7 +81,7 @@ class CocoDataset(Dataset):
         self._image_meta = {}
         for _image in anno['images']:
             m = ImageMeta(fpath=os.path.join(self.image_dir, _image['file_name']),
-                          h=_image['height'], w=_image['width'])
+                          w=_image['width'], h=_image['height'])
             self._image_meta[_image['id']] = m
         logger.info(f"Num images: {len(self._image_meta):,d}")
 
@@ -109,16 +106,15 @@ class CocoDataset(Dataset):
                 continue
             # Sanitize bbox data
             image_meta = self._image_meta[_anno['image_id']]
-            ih = image_meta.h
             iw = image_meta.w
+            ih = image_meta.h
             x, y, bw, bh = _anno['bbox']
             x1 = max(0, x)
             y1 = max(0, y)
             x2 = min(iw - 1, x1 + max(0, bw - 1))
             y2 = min(ih - 1, y1 + max(0, bh - 1))
             if _anno['area'] > 0 and x2 >= x1 and y2 >= y1:
-                # Convert bbox format from COCO data format(=xywh) to yxhw
-                bbox = BBox(y=y1, x=x1, h=y2-y1, w=x2-x1)
+                bbox = BBox(x=x1, y=y1, w=x2-x1, h=y2-y1)
                 self._dataset.append(DataSample(keypoints=kp, bbox=bbox,
                                                 image_id=_anno['image_id'], id=_anno['id']))
             else:
@@ -154,54 +150,51 @@ class CocoDataset(Dataset):
                  hflip: bool = False,
                  rotate: int = 0,
                  scale: float = 1.25
-                 ) -> tuple[Tensor, Tensor, Tensor, Tensor, Dict]:
+                 ) -> tuple[Any, Tensor, Tensor, Tensor, Dict]:
         sample = self.get_sample(idx)
         image_meta = self.get_image_meta(sample.image_id)
         image_path = image_meta.fpath
 
-        hpad_ratio = 0.0
-        wpad_ratio = 0.2
-        image_size = [image_meta.h, image_meta.w]
-        hpad = math.floor(image_meta.h * hpad_ratio)
-        wpad = math.floor(image_meta.w * wpad_ratio)
-        image_size = [image_size[0] + hpad * 2, image_size[1] + wpad * 2]
+        bbox = sample.bbox
 
-        bbox = sample.bbox.pad(hpad, wpad)
-        image = self._read_image(image_path)  # (c,h,w)
-        image = pad(image, (int(wpad), int(wpad), int(hpad), int(hpad)))  # (left pad, right pad, top pad, bottom pad)
+        # shape: (height, width, color channels)
+        image_numpy = cv2.imread(image_path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
 
-        keypoints = sample.keypoints.pad(hpad, wpad)
+        if image_numpy is None:
+            logger.error(f"=> fail to read {image_path}")
+            raise ValueError(f"Fail to read {image_path}")
+
+        keypoints = sample.keypoints
 
         if hflip is True:
-            image = image.flip(2)
-            bbox = bbox.hflip(image_size[1])
-            keypoints = keypoints.hflip(image_size[1])
-            logger.debug("the image is horizontally flipped.")
+            image_numpy = image_numpy[:, ::-1, :]
+            bbox = bbox.hflip(image_meta.w)
+            keypoints = keypoints.hflip(image_meta.w)
 
-        image = transforms.rotate_image(image, rotate, bbox.center())
-        keypoints = keypoints.rotate(rotate, bbox.center(), image_size)
+        trans = get_affine_transform(bbox, scale, rotate, self.nn_input_size_wh)
+        input = cv2.warpAffine(
+            image_numpy,
+            trans,
+            (int(self.nn_input_size_wh[0]), int(self.nn_input_size_wh[1])),
+            flags=cv2.INTER_LINEAR)
 
-        image, bbox = transforms.crop_image(image, scale, bbox.center(), bbox.size(), self.nn_input_size)
-        keypoints = keypoints.reposition(bbox, self.nn_input_size)
+        keypoints = keypoints.affine_transform(trans)
 
         if self.transform is not None:
-            nn_input_image = self.transform(image)
-        else:
-            nn_input_image = copy.deepcopy(image)
+            input = self.transform(input)
 
-        target_y, target_x, target_weight = self._generate_simcc_label(keypoints)
-        meta = {"image": image,
-                "image_id": torch.tensor(sample.image_id).type(torch.long),
+        target_x, target_y, target_weight = self._generate_simcc_label(keypoints)
+        meta = {"image_id": torch.tensor(sample.image_id).type(torch.long),
                 "anno_id": torch.tensor(sample.id).type(torch.long),
-                "origin_bbox": torch.tensor(sample.bbox.get_yxhw()).type(torch.long),
-                "bbox": torch.tensor(bbox.pad(hpad * -1, wpad * -1).get_yxhw()).type(torch.long),
+                "origin_bbox": torch.tensor(sample.bbox.get_xywh()).type(torch.long),
+                "bbox": torch.tensor(bbox.get_xywh()).type(torch.long),
                 "keypoints": keypoints.get_kps(),
                 "vis": keypoints.get_vis()}
 
-        return nn_input_image, target_y, target_x, target_weight, meta
+        return input, target_x, target_y, target_weight, meta
 
     def __getitem__(self, idx: int)\
-        -> tuple[Tensor, Tensor, Tensor, Tensor, Dict]:
+        -> tuple[Any, Tensor, Tensor, Tensor, Dict]:
         hflip = False
         rotate = 0
         scale = 1.25
@@ -217,59 +210,43 @@ class CocoDataset(Dataset):
 
         return self.get_item(idx, hflip, rotate, scale)
 
-    def _read_image(self, image_path: str) -> Tensor:
-        """
-        torchvision.io.read_image() wrapper function
-        to guarantee number of color channels to 3.
-        """
-        image = torchvision.io.read_image(image_path)
-        if image.shape[0] == 3:
-            return image
-        elif image.shape[0] == 1:
-            # https://discuss.pytorch.org/t/grayscale-to-rgb-transform/18315/2
-            return image.repeat(3, 1, 1)
-        else:
-            msg = "_read_image() expected image channel size to be one of 3, or 1 " \
-                  f"but not found {image.shape[0]}. image file path: {image_path}"
-            raise RuntimeError(msg)
-
     def _generate_simcc_label(self, keypoints: KeyPoints)\
         -> tuple[Tensor, Tensor, Tensor]:
         target_weight = torch.zeros((self.num_keypoints, 1), dtype=torch.float32)
         target_weight[keypoints.get_vis() > 0] = 1.0
 
-        h, w = self.nn_input_size
+        w, h = self.nn_input_size_wh
         sf = self.simcc_split_factor
 
-        target_y = torch.zeros((self.num_keypoints, h * sf), dtype=torch.float32)
         target_x = torch.zeros((self.num_keypoints, w * sf), dtype=torch.float32)
+        target_y = torch.zeros((self.num_keypoints, h * sf), dtype=torch.float32)
 
         sigma = self.simcc_sigma
         buffer = sigma * 3
         for kp_idx in range(self.num_keypoints):
-            ky, kx = keypoints.get_kp(kp_idx)
+            kx, ky = keypoints.get_kp(kp_idx)
 
             # Check that any part of the gaussian is in-bounds
-            uly = ky - buffer
             ulx = kx - buffer
-            bry = ky + buffer + 1
+            uly = ky - buffer
             brx = kx + buffer + 1
-            if uly < 0 or ulx < 0 or bry > h or brx > w:
+            bry = ky + buffer + 1
+            if ulx < 0 or uly < 0 or brx > w or bry > h:
                 target_weight[kp_idx] = 0.0
 
             if target_weight[kp_idx] < 1e-10:
                 continue
 
             # Space-aware Gaussian label smoothing
-            mu_y = ky * sf
             mu_x = kx * sf
-            y = torch.arange(0, int(h * sf), 1, dtype=torch.float32)
+            mu_y = ky * sf
             x = torch.arange(0, int(w * sf), 1, dtype=torch.float32)
+            y = torch.arange(0, int(h * sf), 1, dtype=torch.float32)
             denom = sigma * np.sqrt(np.pi * 2)
-            target_y[kp_idx] = (torch.exp(- ((y - mu_y) ** 2) / (2 * sigma ** 2))) / denom
             target_x[kp_idx] = (torch.exp(- ((x - mu_x) ** 2) / (2 * sigma ** 2))) / denom
+            target_y[kp_idx] = (torch.exp(- ((y - mu_y) ** 2) / (2 * sigma ** 2))) / denom
 
-        return target_y, target_x, target_weight
+        return target_x, target_y, target_weight
 
     def get_connected_keypoints(self, keypoint_idx: int) -> list[int]:
         ret = set()
@@ -291,8 +268,7 @@ class CocoDataset(Dataset):
 
     def evaluate(self,
                  preds_per_image: dict[int, list[torch.Tensor]],
-                 epoch: int,
-                 yx2xy: bool = True
+                 epoch: int
                  ) -> OrderedDict[str,float]:
         """Calculate average precision using ground truth bbox."""
         pred_dump = []
@@ -304,11 +280,7 @@ class CocoDataset(Dataset):
                 # (17,2) pred -> (17,3)
                 kp = torch.zeros(17, 3, dtype=torch.float32)
                 # cocoapi uses xy coordinates.
-                if yx2xy:
-                    kp[:,0] = pred[:,1]
-                    kp[:,1] = pred[:,0]
-                else:
-                    kp[:,0:2] = pred
+                kp[:,0:2] = pred
                 # These are dummy visibility score. cocoapi evaluation ignores pred vis score.
                 kp[:,2] = (kp.sum(dim=1)>0).int()
                 v = {"image_id": image_id,

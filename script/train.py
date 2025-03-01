@@ -11,6 +11,7 @@ import torch
 from loguru import logger
 from torch import nn
 from torch.utils.data import DataLoader
+from torchvision import transforms
 from torchvision.transforms import Compose, Normalize
 from yacs.config import CfgNode
 
@@ -20,7 +21,6 @@ from pose.config import get_cfg_defaults
 from pose.core.function import train_simcc, validate_simcc
 from pose.core.loss import KLDiscretLoss
 from pose.data.dataset import CocoDataset
-from pose.data.transforms import RescaleImgDiv255
 
 
 logger.remove()
@@ -48,6 +48,7 @@ def get_model(cfg: CfgNode, need_init_weights: bool) -> nn.Module:
 
 def train(config_fname: str) -> None:
     cfg = get_cfg_defaults()
+
     cfg.merge_from_file(config_fname)
     cfg.freeze()
     logger.info(f"Configurations:\n{cfg}")
@@ -66,9 +67,9 @@ def train(config_fname: str) -> None:
 
     # Data loading
     input_transform = Compose([
-        RescaleImgDiv255(),
-        Normalize(mean=[0.406, 0.485, 0.456], # imagenet data normalization (RGB order)
-                  std=[0.225, 0.229, 0.224])
+        transforms.ToTensor(),
+        Normalize(mean=[0.485, 0.456, 0.406], # imagenet data normalization parameter
+                  std=[0.229, 0.224, 0.225])
     ])
     logger.info("Preapring training dataset")
     tr_dataset = CocoDataset(cfg, is_train=True,

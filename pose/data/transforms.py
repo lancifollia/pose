@@ -1,73 +1,75 @@
 #!/usr/bin/env python3
-import math
-
+import cv2
+import numpy as np
+import numpy.typing as npt
 import torch
-from loguru import logger
-from torchvision.transforms.v2 import InterpolationMode
-from torchvision.transforms.v2.functional import affine, crop, resize
 
 from pose.data.datatype import BBox
 
 
-class RescaleImgDiv255(object):
-    def __call__(self, pic: torch.Tensor) -> torch.Tensor:
-        if pic.dtype != torch.uint8:
-            raise ValueError("dtype should be torch.uint8")
-        return pic.div(255)
+def get_affine_transform(bbox: BBox,
+                         scale: float,
+                         rotate: float,
+                         out_size: list[float],  # (h,w)
+                         ):
+    """
+    Since cv2.getAffineTransform() uses (x,y) coordinates,
+    so this function uses (x,y) coordinates.
+    """
+    center_xy = np.array(bbox.center_xy(), dtype=np.float32)
+    w, h = bbox.size_wh()
+    scale_wh = np.array([w * scale, h * scale], dtype=np.float32)
+
+    src_w = scale_wh[0]
+    dst_h, dst_w = out_size
+
+    rotate_rad = np.pi * rotate / 180
+    src_dir = get_rotated_point_xy([0, src_w * -0.5], rotate_rad)
+    dst_dir = np.array([0, dst_w * -0.5], dtype=np.float32)
+
+    src = np.zeros((3, 2), dtype=np.float32)
+    dst = np.zeros((3, 2), dtype=np.float32)
+    dst_center_xy = np.array([dst_w * 0.5, dst_h * 0.5], dtype=np.float32)
+    src[0, :] = center_xy
+    src[1, :] = center_xy + src_dir
+    dst[0, :] = dst_center_xy
+    dst[1, :] = dst_center_xy + dst_dir
+
+    src[2:, :] = get_affine_triangle_3rd_point(src[0, :], src[1, :])
+    dst[2:, :] = get_affine_triangle_3rd_point(dst[0, :], dst[1, :])
+
+    return cv2.getAffineTransform(src, dst)
 
 
-def rotate_image(image: torch.Tensor,
-                 rotate: float,
-                 center: list[float]  # (y,x)
-                 ) -> torch.Tensor:
-    # Change center coordinate (y,x) -> (x,y)
-    # torchvision.transforms.affine() uses xy coordinate.
-    center_xy = [center[1], center[0]]
-    return affine(image, rotate, translate=[0,0], scale=1.0, shear=[0,0],
-                  interpolation=InterpolationMode.BILINEAR, center=center_xy)
+def get_rotated_point_xy(point_xy: list[float],  # (x,y)
+                         rotate_rad: float
+                         ) -> npt.NDArray:
+    sin, cos = np.sin(rotate_rad), np.cos(rotate_rad)
+
+    result = np.array([0, 0], dtype=np.float32)
+    result[0] = point_xy[0] * cos - point_xy[1] * sin
+    result[1] = point_xy[0] * sin + point_xy[1] * cos
+
+    return result
 
 
-def crop_image(image: torch.Tensor,
-               scale: float,
-               center: list[float],        # (y, x)
-               bbox_size: list[int],       # (h, w)
-               out_image_size: list[int],  # (h, w)
-               ) -> tuple[torch.Tensor, BBox]:
-    cy, cx = center
-    _bh, _bw = bbox_size
-    oh, ow = out_image_size
-    aspect_ratio = float(ow) / oh
-
-    bh = math.floor(_bh * scale)
-    bw = math.floor(_bw * scale)
-
-    if bw > bh * aspect_ratio:
-        bh = math.floor(bw * (aspect_ratio ** -1))
-    elif bw < bh * aspect_ratio:
-        bw = math.floor(bh * aspect_ratio)
-
-    top = math.floor(cy - 0.5*bh)
-    left = math.floor(cx - 0.5*bw)
-
-    image = crop(image, top=top, left=left, height=bh, width=bw)
-    image = resize(image, size=out_image_size,
-                   interpolation=InterpolationMode.BILINEAR)
-
-    new_bbox = BBox(y=top, x=left, h=bh, w=bw)
-    logger.debug(f"new bbox: {new_bbox}")
-
-    return image, new_bbox
+def get_affine_triangle_3rd_point(catheti: npt.NDArray,
+                                  hypotenuse: npt.NDArray,
+                                  ) -> npt.NDArray:
+    """Get another catheti of the right triangle"""
+    direction = catheti - hypotenuse
+    return hypotenuse + np.array([-direction[1], direction[0]], dtype=np.float32)
 
 
-def transform_bbox_pred_to_image_pred(kp: torch.Tensor,           # (17,2(=y,x))
-                                      real_bbox: list[float],     # (y,x,h,w)
-                                      pred_bbox_size: list[float] # (h,w)
+def transform_bbox_pred_to_image_pred(kp: torch.Tensor,           # (17,2(=x,y))
+                                      real_bbox: list[float],     # (x,y,w,h)
+                                      pred_bbox_size: list[float] # (w,h)
                                       ) -> torch.Tensor:
     ret = torch.zeros_like(kp)
-    ry, rx, rh, rw = real_bbox
-    ph, pw = pred_bbox_size
-    ret[:,0] = kp[:,0] * ph**-1 * rh
-    ret[:,1] = kp[:,1] * pw**-1 * rw
-    ret[ret.sum(dim=1)>0,0] += ry
-    ret[ret.sum(dim=1)>0,1] += rx
+    rx, ry, rw, rh = real_bbox
+    pw, ph = pred_bbox_size
+    ret[:,0] = kp[:,0] * pw**-1 * rw
+    ret[:,1] = kp[:,1] * ph**-1 * rh
+    ret[ret.sum(dim=1)>0,0] += rx
+    ret[ret.sum(dim=1)>0,1] += ry
     return ret
