@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import time
+from collections import OrderedDict
 
 import torch
 from loguru import logger
@@ -81,7 +82,7 @@ def validate_simcc(cfg: CfgNode,
                    model: nn.Module,
                    criterion: nn.Module,
                    epoch: int
-                   ) -> tuple[float, float, float]:
+                   ) -> tuple[OrderedDict[str,float], float]:
 
     batch_time = AverageMeter()
     losses = AverageMeter()
@@ -134,11 +135,11 @@ def validate_simcc(cfg: CfgNode,
             start_ts = time.time()
 
         logger.info(f"AP evaluation target images: {len(preds_per_image):,}")
-        eval_stats, average_precision, average_recall = val_dataset.evaluate(preds_per_image, epoch)
+        eval_stats = val_dataset.evaluate(preds_per_image, epoch)
 
         logger.info(", ".join(f"{_m}: {eval_stats[_m]:.4f}"
                               for _m in ['AP', 'AP .5', 'AP .75', 'AP (M)', 'AP (L)']))
         logger.info(", ".join(f"{_m}: {eval_stats[_m]:.4f}"
                               for _m in ['AR', 'AR .5', 'AR .75', 'AR (M)', 'AR (L)']))
 
-        return average_precision, average_recall, losses.avg
+        return eval_stats, losses.avg

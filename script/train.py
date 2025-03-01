@@ -99,8 +99,8 @@ def train(config_fname: str) -> None:
     logging_fname = f"perf_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.log"
     logger.info(f"performance logging file name: {logging_fname}")
     with open(logging_fname, 'w') as fout:
-        fout.write("| ep | AP | AR | Train | Val |\n")
-        fout.write("| --- | --- | --- | --- | --- |\n")
+        fout.write("| ep | AP | AP.5 | AP.75 | AR | Train | Val |\n")
+        fout.write("| --- | --- | --- | --- | --- | --- | --- |\n")
 
     checkpoint_dir = "checkpoints"
     pathlib.Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
@@ -115,14 +115,19 @@ def train(config_fname: str) -> None:
         train_loss = train_simcc(cfg, tr_dataloader, model, criterion, optimizer, epoch)
         lr_scheduler.step()
 
-        ap, ar, val_loss = validate_simcc(cfg, val_dataloader, val_dataset, model, criterion, epoch)
+        eval_stats, val_loss = validate_simcc(cfg, val_dataloader, val_dataset, model, criterion, epoch)
 
         with open(logging_fname, 'a') as fout:
-            fout.write(f"| {epoch} | {ap:.4f} | {ar:.4f} | {train_loss:.6f} | {val_loss:.6f} |\n")
+            _vals = [f"{epoch}"]
+            for _m in ['AP', 'AP .5', 'AP .75', 'AR']:
+                _vals.append(f"{eval_stats[_m]:.4f}")
+            _vals.append(f"{train_loss:.6f}")
+            _vals.append(f"{val_loss:.6f}")
+            fout.write("| " + " | ".join(_vals) + " |\n")
 
-        if ap > best_ap:
-            best_ap = ap
-            logger.info(f"Best AP is updated! {ap:.4f}")
+        if eval_stats['AP'] > best_ap:
+            best_ap = eval_stats['AP']
+            logger.info(f"Best AP is updated! {eval_stats['AP']:.4f}")
 
         checkpoint_fpath = os.path.join(checkpoint_dir, "checkpoint_{epoch}.pth")
         torch.save({
@@ -130,7 +135,7 @@ def train(config_fname: str) -> None:
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'loss': {'train': train_loss, 'val': val_loss},
-            'avg_precision': ap,
+            'avg_precision': eval_stats['AP'],
             'best_avg_precision': best_ap,
         }, checkpoint_fpath)
 
