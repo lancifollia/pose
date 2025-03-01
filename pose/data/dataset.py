@@ -55,7 +55,7 @@ class CocoDataset(Dataset):
 
         self.nn_input_size_wh = cfg.MODEL.INPUT_SIZE_WH
         logger.info(f"NN input size(width, height): {self.nn_input_size_wh}")
-        self.min_keypoints=cfg.DATA_COMMON.MIN_KEYPOINTS
+        self.min_keypoints = cfg.DATA_COMMON.MIN_KEYPOINTS
 
         self.simcc_split_factor = cfg.MODEL.EXTRA.SIMCC_SPLIT_FACTOR
         self.simcc_sigma = cfg.MODEL.EXTRA.SIMCC_SIGMA

@@ -10,7 +10,7 @@ from pose.data.datatype import BBox
 def get_affine_transform(bbox: BBox,
                          scale: float,
                          rotate: float,
-                         out_size: list[float],  # (h,w)
+                         out_size_wh: list[float],  # (w,h)
                          ):
     """
     Since cv2.getAffineTransform() uses (x,y) coordinates,
@@ -21,7 +21,7 @@ def get_affine_transform(bbox: BBox,
     scale_wh = np.array([w * scale, h * scale], dtype=np.float32)
 
     src_w = scale_wh[0]
-    dst_h, dst_w = out_size
+    dst_w, dst_h = out_size_wh
 
     rotate_rad = np.pi * rotate / 180
     src_dir = get_rotated_point_xy([0, src_w * -0.5], rotate_rad)
@@ -46,7 +46,7 @@ def get_rotated_point_xy(point_xy: list[float],  # (x,y)
                          ) -> npt.NDArray:
     sin, cos = np.sin(rotate_rad), np.cos(rotate_rad)
 
-    result = np.array([0, 0], dtype=np.float32)
+    result = np.array([0.0, 0.0], dtype=np.float32)
     result[0] = point_xy[0] * cos - point_xy[1] * sin
     result[1] = point_xy[0] * sin + point_xy[1] * cos
 

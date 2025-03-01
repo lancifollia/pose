@@ -32,7 +32,7 @@ class KLDiscretLoss(nn.Module):
                 target_y: Tensor,
                 target_weight: Tensor
                 ) -> Tensor:
-        num_kp = output_y.shape[1]  # (b, k, (c h w))
+        num_kp = output_x.shape[1]  # (b, k, (c h w))
         loss = torch.tensor(0.).cuda()
 
         for idx in range(num_kp):
