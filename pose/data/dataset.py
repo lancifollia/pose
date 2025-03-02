@@ -160,7 +160,7 @@ class CocoDataset(Dataset):
         image_meta = self.get_image_meta(sample.image_id)
         image_path = image_meta.fpath
 
-        bbox = sample.bbox.transform(self.aspect_ratio, self.bbox_scale_factor)
+        bbox = sample.bbox.transform(self.aspect_ratio, self.bbox_scale_factor * scale)
 
         # shape: (height, width, color channels)
         image_numpy = cv2.imread(image_path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
@@ -176,7 +176,7 @@ class CocoDataset(Dataset):
             bbox = bbox.hflip(image_meta.w)
             keypoints = keypoints.hflip(image_meta.w)
 
-        trans = get_affine_transform(bbox, scale, rotate, self.nn_input_size_wh)
+        trans = get_affine_transform(bbox, rotate, self.nn_input_size_wh)
         input = cv2.warpAffine(
             image_numpy,
             trans,

@@ -8,16 +8,16 @@ from pose.data.datatype import BBox
 
 
 def get_affine_transform(bbox: BBox,
-                         scale: float,
                          rotate: float,
                          out_size_wh: list[float],  # (w,h)
+                         inverse=False,
                          ) -> npt.NDArray:
     """
     Since cv2.getAffineTransform() uses (x,y) coordinates,
     so this function uses (x,y) coordinates.
     """
     center_xy = np.array(bbox.get_center_xy(), dtype=np.float32)
-    scale_wh = np.array(bbox.get_size_wh(), dtype=np.float32) * scale
+    scale_wh = np.array(bbox.get_size_wh(), dtype=np.float32)
     src_w = scale_wh[0]
 
     dst_w, dst_h = out_size_wh
@@ -37,7 +37,12 @@ def get_affine_transform(bbox: BBox,
     src[2:, :] = get_affine_triangle_3rd_point(src[0, :], src[1, :])
     dst[2:, :] = get_affine_triangle_3rd_point(dst[0, :], dst[1, :])
 
-    return cv2.getAffineTransform(src, dst)
+    if inverse:
+        trans = cv2.getAffineTransform(dst, src)
+    else:
+        trans = cv2.getAffineTransform(src, dst)
+
+    return trans
 
 
 def get_rotated_point_xy(point_xy: list[float],  # (x,y)
@@ -67,8 +72,8 @@ def transform_bbox_pred_to_image_pred(kp: torch.Tensor,           # (17,2(=x,y))
     ret = torch.zeros_like(kp)
     rx, ry, rw, rh = real_bbox
     pw, ph = pred_bbox_size
-    ret[:,0] = kp[:,0] * pw**-1 * rw
-    ret[:,1] = kp[:,1] * ph**-1 * rh
+    ret[:,0] = kp[:,0] * (float(pw)**-1) * rw
+    ret[:,1] = kp[:,1] * (float(ph)**-1) * rh
     ret[ret.sum(dim=1)>0,0] += rx
     ret[ret.sum(dim=1)>0,1] += ry
     return ret

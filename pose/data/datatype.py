@@ -8,11 +8,11 @@ import numpy.typing as npt
 
 
 class BBox(object):
-    def __init__(self, x: int, y: int, w: int, h: int,) -> None:
-        self.scale = 1.0
+    def __init__(self, x: float, y: float, w: float, h: float, scale: float = 1.0) -> None:
+        self.scale = scale
 
-        self.x = float(x)           # left upper x coordinate
-        self.y = float(y)           # left upper y coordinate
+        self.x = x                  # left upper x coordinate
+        self.y = y                  # left upper y coordinate
         self.w = w * self.scale     # widht of the bounding box
         self.h = h * self.scale     # height of the bounding box
 
@@ -58,6 +58,9 @@ class BBox(object):
 
     def get_size_wh(self) -> list[float]:
         return [self.w, self.h]
+
+    def get_scale(self) -> float:
+        return self.scale
 
 
 class KeyPoints(object):
