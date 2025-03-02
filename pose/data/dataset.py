@@ -55,6 +55,11 @@ class CocoDataset(Dataset):
 
         self.nn_input_size_wh = cfg.MODEL.INPUT_SIZE_WH
         logger.info(f"NN input size(width, height): {self.nn_input_size_wh}")
+        self.aspect_ratio = self.nn_input_size_wh[0] * 1.0 / self.nn_input_size_wh[1]
+        logger.info(f"Aspect ratio(=width/height): {self.aspect_ratio:.4f}")
+        self.bbox_scale_factor = 1.25
+        logger.info(f"BBox scale factor: {self.bbox_scale_factor:.4f}")
+
         self.min_keypoints = cfg.DATA_COMMON.MIN_KEYPOINTS
 
         self.simcc_split_factor = cfg.MODEL.EXTRA.SIMCC_SPLIT_FACTOR
@@ -149,13 +154,13 @@ class CocoDataset(Dataset):
                  idx: int,
                  hflip: bool = False,
                  rotate: int = 0,
-                 scale: float = 1.25
+                 scale: float = 1.0
                  ) -> tuple[Any, Tensor, Tensor, Tensor, Dict]:
         sample = self.get_sample(idx)
         image_meta = self.get_image_meta(sample.image_id)
         image_path = image_meta.fpath
 
-        bbox = sample.bbox
+        bbox = sample.bbox.transform(self.aspect_ratio, self.bbox_scale_factor)
 
         # shape: (height, width, color channels)
         image_numpy = cv2.imread(image_path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
@@ -186,8 +191,8 @@ class CocoDataset(Dataset):
         target_x, target_y, target_weight = self._generate_simcc_label(keypoints)
         meta = {"image_id": torch.tensor(sample.image_id).type(torch.long),
                 "anno_id": torch.tensor(sample.id).type(torch.long),
-                "origin_bbox": torch.tensor(sample.bbox.get_xywh()).type(torch.long),
-                "bbox": torch.tensor(bbox.get_xywh()).type(torch.long),
+                "origin_bbox": torch.tensor(sample.bbox.get_xywh()).type(torch.float),
+                "bbox": torch.tensor(bbox.get_xywh()).type(torch.float),
                 "keypoints": keypoints.get_kps(),
                 "vis": keypoints.get_vis()}
 
@@ -197,7 +202,7 @@ class CocoDataset(Dataset):
         -> tuple[Any, Tensor, Tensor, Tensor, Dict]:
         hflip = False
         rotate = 0
-        scale = 1.25
+        scale = 1.0
 
         if self.do_data_augment:
             if np.random.random() <= self.flip_proba:
@@ -205,8 +210,8 @@ class CocoDataset(Dataset):
             if np.random.random() <= self.rotate_proba:
                 rotate = np.clip(np.random.randn() * self.rotate_factor,
                                  self.rotate_factor * -2, self.rotate_factor * 2)
-            scale = scale * np.clip(np.random.randn() * self.scale_factor + 1,
-                                    1 - self.scale_factor, 1 + self.scale_factor)
+            scale = np.clip(np.random.randn() * self.scale_factor + 1,
+                            1 - self.scale_factor, 1 + self.scale_factor)
 
         return self.get_item(idx, hflip, rotate, scale)
 

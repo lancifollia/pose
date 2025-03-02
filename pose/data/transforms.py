@@ -16,19 +16,11 @@ def get_affine_transform(bbox: BBox,
     Since cv2.getAffineTransform() uses (x,y) coordinates,
     so this function uses (x,y) coordinates.
     """
-    dst_w, dst_h = out_size_wh
-    aspect_ratio = dst_w * 1.0 / dst_h
-
-    w, h = map(float, bbox.size_wh())
-    if w > aspect_ratio * h:
-        h = w * 1.0 / aspect_ratio
-    elif w < aspect_ratio * h:
-        w = h * aspect_ratio
-    scale_wh = np.array([w * scale, h * scale], dtype=np.float32)
-
-    center_xy = np.array(bbox.center_xy(), dtype=np.float32)
-
+    center_xy = np.array(bbox.get_center_xy(), dtype=np.float32)
+    scale_wh = np.array(bbox.get_size_wh(), dtype=np.float32) * scale
     src_w = scale_wh[0]
+
+    dst_w, dst_h = out_size_wh
 
     rotate_rad = np.pi * rotate / 180
     src_dir = get_rotated_point_xy([0, src_w * -0.5], rotate_rad)

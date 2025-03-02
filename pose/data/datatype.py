@@ -1,23 +1,20 @@
 from __future__ import annotations
 
 import copy
+import math
 
 import numpy as np
 import numpy.typing as npt
 
 
 class BBox(object):
-    def __init__(self, x: int, y: int, w: int, h: int) -> None:
-        """
-        x: left upper x coordinate
-        y: left upper y coordinate
-        w: widht of the bounding box
-        h: height of the bounding box
-        """
-        self.x = x
-        self.y = y
-        self.w = w
-        self.h = h
+    def __init__(self, x: int, y: int, w: int, h: int,) -> None:
+        self.scale = 1.0
+
+        self.x = float(x)           # left upper x coordinate
+        self.y = float(y)           # left upper y coordinate
+        self.w = w * self.scale     # widht of the bounding box
+        self.h = h * self.scale     # height of the bounding box
 
     def __repr__(self):
         return self._to_string()
@@ -26,27 +23,41 @@ class BBox(object):
         return self._to_string()
 
     def _to_string(self) -> str:
-        return f"x({self.x}) y({self.y}) w({self.w}) h({self.h})"
+        return f"x({self.x:.2f}) y({self.y:.2f}) w({self.w:.2f}) h({self.h:.2f}) scale({self.scale:.2f})"
+
+    def transform(self, aspect_ratio: float, scale: float) -> BBox:
+        ret = copy.deepcopy(self)
+
+        cx = ret.x + ret.w * 0.5
+        cy = ret.y + ret.h * 0.5
+
+        ret.w = ret.w * scale  # scaled width
+        ret.h = ret.h * scale  # scaled height
+        ret.scale = scale
+
+        if ret.w > aspect_ratio * ret.h:
+            ret.h = ret.w * 1.0 / aspect_ratio
+        elif ret.w < aspect_ratio * ret.h:
+            ret.w = ret.h * aspect_ratio
+
+        ret.x = math.floor(cx - ret.w * 0.5)
+        ret.y = math.floor(cy - ret.h * 0.5)
+
+        return ret
 
     def hflip(self, image_width: int) -> BBox:
         ret = copy.deepcopy(self)
         ret.x = image_width - ret.x - ret.w
         return ret
 
-    def get_xywh(self) -> list[int]:
+    def get_xywh(self) -> list[float]:
         return [self.x, self.y, self.w, self.h]
 
-    def center_xy(self) -> list[float]:
-        return [self.x + 0.5*self.w, self.y + 0.5*self.h]
+    def get_center_xy(self) -> list[float]:
+        return [self.x + self.w * 0.5, self.y + self.h * 0.5]
 
-    def center_yx(self) -> list[float]:
-        return [self.y + 0.5*self.h, self.x + 0.5*self.w]
-
-    def size_wh(self) -> list[int]:
+    def get_size_wh(self) -> list[float]:
         return [self.w, self.h]
-
-    def size_hw(self) -> list[int]:
-        return [self.h, self.w]
 
 
 class KeyPoints(object):
