@@ -4,10 +4,13 @@ Training script
 import datetime
 import os
 import pathlib
+import pickle
+import random
 import sys
 import time
 
 import torch
+import numpy as np
 from loguru import logger
 from torch import nn
 from torch.utils.data import DataLoader
@@ -31,7 +34,7 @@ def get_loss_function(loss_type: str) -> nn.Module:
     if loss_type == "KLDiscretLoss":
         return KLDiscretLoss()
     else:
-        msg = "Only the loss_type 'KLDiscrteLoss' is supported yet. " \
+        msg = "Only the loss_type 'KLDiscretLoss' is supported yet. " \
               f"Invalid loss type: {loss_type}"
         raise RuntimeError(msg)
 
@@ -46,6 +49,24 @@ def get_model(cfg: CfgNode, need_init_weights: bool) -> nn.Module:
         raise RuntimeError(msg)
 
 
+def set_random_seed(random_seed: int) -> None:
+    logger.info(f"Set random seed: {random_seed}")
+    torch.manual_seed(random_seed)
+    torch.cuda.manual_seed(random_seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    np.random.seed(random_seed)
+    random.seed(random_seed)
+
+
+def dump_parameters(model: nn.Module, path: str) -> None:
+    params = []
+    for p in model.parameters():
+        params.append(p)
+    with open(path, 'wb') as fout:
+        pickle.dump(params, fout, pickle.HIGHEST_PROTOCOL)
+
+
 def train(config_fname: str) -> None:
     cfg = get_cfg_defaults()
 
@@ -56,7 +77,11 @@ def train(config_fname: str) -> None:
     torch.cuda.set_device("cuda:0")
 
     # Prepare model parameter
+    set_random_seed(42)
     model = get_model(cfg, need_init_weights=True).cuda()
+    dump_parameters(model, 'pose_init_model.pt')
+    logger.info("Done")
+    exit(0)
     logger.info(f"Model: {model}")
     total_param_size = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logger.info(f"Model param size: {total_param_size:,}")
@@ -90,6 +115,9 @@ def train(config_fname: str) -> None:
                                 num_workers=cfg.DATA_LOADER.NUM_WORKERS,
                                 pin_memory=cfg.DATA_LOADER.USE_PIN_MEMORY,
                                 )
+
+    # for debugging
+    x = tr_dataset[0]
 
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.TRAIN.LR)
     logger.info(f"Optimizer:\n{optimizer}")
