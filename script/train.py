@@ -79,9 +79,9 @@ def train(config_fname: str) -> None:
     # Prepare model parameter
     set_random_seed(42)
     model = get_model(cfg, need_init_weights=True).cuda()
-    dump_parameters(model, 'pose_init_model.pt')
-    logger.info("Done")
-    exit(0)
+    # dump_parameters(model, 'pose_init_model.pt')
+    # logger.info("Model dump done")
+    # exit(0)
     logger.info(f"Model: {model}")
     total_param_size = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logger.info(f"Model param size: {total_param_size:,}")
@@ -105,7 +105,7 @@ def train(config_fname: str) -> None:
     logger.info("Preapring dataloader")
     tr_dataloader = DataLoader(tr_dataset,
                                batch_size=cfg.DATA_LOADER.BATCH_SIZE,
-                               shuffle=True,
+                               shuffle=False,
                                num_workers=cfg.DATA_LOADER.NUM_WORKERS,
                                pin_memory=cfg.DATA_LOADER.USE_PIN_MEMORY,
                                )
@@ -117,7 +117,7 @@ def train(config_fname: str) -> None:
                                 )
 
     # for debugging
-    x = tr_dataset[0]
+    # x = tr_dataset[0]
 
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.TRAIN.LR)
     logger.info(f"Optimizer:\n{optimizer}")

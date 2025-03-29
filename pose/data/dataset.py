@@ -97,7 +97,15 @@ class CocoDataset(Dataset):
         num_skip_insufficient_keypoints = 0
         num_skip_invalid_bbox = 0
         self._dataset = list[DataSample]()
+
+        # TODO: need to delete after verification
+        anno_set = set([183020, 183030, 183050, 183062, 183092, 183103, 183141, 183194, 183263, 183277])
+
         for _anno in anno['annotations']:
+            # TODO: need to delete after verification
+            if _anno['id'] not in anno_set:
+                continue
+
             if _anno['iscrowd'] != 0:
                 num_skip_crowd += 1
                 continue
@@ -204,7 +212,8 @@ class CocoDataset(Dataset):
         rotate = 0
         scale = 1.0
 
-        if self.do_data_augment:
+        if False:
+        # if self.do_data_augment:
             if np.random.random() <= self.flip_proba:
                 hflip = True
             if np.random.random() <= self.rotate_proba:

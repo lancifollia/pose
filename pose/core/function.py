@@ -47,6 +47,19 @@ def train_simcc(cfg: CfgNode,
 
     start_ts = time.time()
     for i, (input, target_x, target_y, target_weight, meta) in enumerate(tr_dataloader):
+        # data dump for verification
+        import pickle
+        d = {'input': input,
+             'target_x': target_x,
+             'target_y': target_y,
+             'target_weight': target_weight,
+             'meta': meta}
+        with open('pose_batch_data.pkl', 'wb') as fout:
+            pickle.dump(d, fout, pickle.HIGHEST_PROTOCOL)
+        logger.info("batch data dump done")
+        exit(0)
+
+
         # measure data loading time
         data_time.update(time.time() - start_ts)
 
