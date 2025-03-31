@@ -40,8 +40,8 @@ class BBox(object):
         elif ret.w < aspect_ratio * ret.h:
             ret.w = ret.h * aspect_ratio
 
-        ret.x = math.floor(cx - ret.w * 0.5)
-        ret.y = math.floor(cy - ret.h * 0.5)
+        ret.x = cx - ret.w * 0.5
+        ret.y = cy - ret.h * 0.5
 
         return ret
 
