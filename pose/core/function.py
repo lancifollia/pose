@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+import pickle
 import time
 from collections import OrderedDict
+from typing import Any
 
 import torch
 from loguru import logger
@@ -30,12 +32,23 @@ class AverageMeter(object):
         self.avg = self.cum_val / self.count if self.count != 0 else 0
 
 
+def save_debug_info(debug_info: Any,
+                    epoch: int,
+                    n_iter: int
+                    ) -> None:
+    fpath = f"debug/pose_batch_data_epoch{epoch:03}_iter{n_iter:03}.pkl"
+    with open(fpath, "wb") as fout:
+        pickle.dump(debug_info, fout, pickle.HIGHEST_PROTOCOL)
+    logger.info(f"Save batch debugging data: {fpath}")
+
+
 def train_simcc(cfg: CfgNode,
                 tr_dataloader: DataLoader,
                 model: nn.Module,
                 criterion: nn.Module,
                 optimizer: optim.Optimizer,
-                epoch: int
+                epoch: int,
+                debug: bool = False
                 ) -> float:
 
     data_time = AverageMeter()
@@ -47,19 +60,6 @@ def train_simcc(cfg: CfgNode,
 
     start_ts = time.time()
     for i, (input, target_x, target_y, target_weight, meta) in enumerate(tr_dataloader):
-        # data dump for verification
-        import pickle
-        d = {'input': input,
-             'target_x': target_x,
-             'target_y': target_y,
-             'target_weight': target_weight,
-             'meta': meta}
-        with open('pose_batch_data.pkl', 'wb') as fout:
-            pickle.dump(d, fout, pickle.HIGHEST_PROTOCOL)
-        logger.info("batch data dump done")
-        exit(0)
-
-
         # measure data loading time
         data_time.update(time.time() - start_ts)
 
@@ -71,12 +71,20 @@ def train_simcc(cfg: CfgNode,
         target_weight = target_weight.cuda(non_blocking=True).float()
 
         output_x, output_y = model(input)
-
         loss = criterion(output_x, output_y, target_x, target_y, target_weight)
 
+        if debug:
+            d = {"input": input, "meta": meta,
+                 "target_x": target_x.cpu(), "target_y": target_y.cpu(),
+                 "target_weight": target_weight.cpu(),
+                 "output_x": output_x.cpu(), "output_y": output_y.cpu(),
+                 "loss": loss.item()
+                }
+            save_debug_info(d, epoch, i)
+
+        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        optimizer.zero_grad()
 
         losses.update(loss.item(), input.size(0))
         batch_time.update(time.time() - start_ts)

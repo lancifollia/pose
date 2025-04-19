@@ -67,7 +67,7 @@ def dump_parameters(model: nn.Module, path: str) -> None:
         pickle.dump(params, fout, pickle.HIGHEST_PROTOCOL)
 
 
-def train(config_fname: str) -> None:
+def train(config_fname: str, debug_mode: bool = False) -> None:
     cfg = get_cfg_defaults()
 
     cfg.merge_from_file(config_fname)
@@ -79,9 +79,12 @@ def train(config_fname: str) -> None:
     # Prepare model parameter
     set_random_seed(42)
     model = get_model(cfg, need_init_weights=True).cuda()
-    # dump_parameters(model, 'pose_init_model.pt')
-    # logger.info("Model dump done")
-    # exit(0)
+
+    if debug_mode:
+        fpath = 'debug/pose_init_model.pt'
+        dump_parameters(model, fpath)
+        logger.info(f"Initiali model parameter dumped: {fpath}")
+
     logger.info(f"Model: {model}")
     total_param_size = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logger.info(f"Model param size: {total_param_size:,}")
@@ -103,9 +106,14 @@ def train(config_fname: str) -> None:
     val_dataset = CocoDataset(cfg, is_train=False,
                               transform=input_transform)
     logger.info("Preapring dataloader")
+    if debug_mode:
+        do_tr_dataloader_shuffle = False
+        logger.warning("Do not shuffle training data loader")
+    else:
+        do_tr_dataloader_shuffle = True
     tr_dataloader = DataLoader(tr_dataset,
                                batch_size=cfg.DATA_LOADER.BATCH_SIZE,
-                               shuffle=False,
+                               shuffle=do_tr_dataloader_shuffle,
                                num_workers=cfg.DATA_LOADER.NUM_WORKERS,
                                pin_memory=cfg.DATA_LOADER.USE_PIN_MEMORY,
                                )
@@ -115,9 +123,6 @@ def train(config_fname: str) -> None:
                                 num_workers=cfg.DATA_LOADER.NUM_WORKERS,
                                 pin_memory=cfg.DATA_LOADER.USE_PIN_MEMORY,
                                 )
-
-    # for debugging
-    # x = tr_dataset[0]
 
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.TRAIN.LR)
     logger.info(f"Optimizer:\n{optimizer}")
@@ -134,6 +139,8 @@ def train(config_fname: str) -> None:
     checkpoint_dir = "checkpoints"
     pathlib.Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
+    logger.warning(f"Debug mode: {debug_mode}")
+
     begin_epoch = 0
     best_ap = -1.0
 
@@ -143,6 +150,12 @@ def train(config_fname: str) -> None:
 
         train_loss = train_simcc(cfg, tr_dataloader, model, criterion, optimizer, epoch)
         lr_scheduler.step()
+
+        if debug_mode:
+            fpath = "debug/pose_epoch{epoch:03}_model.pt"
+            dump_parameters(model, fpath)
+            logger.info(f"Intermediate model dumped: {fpath}")
+            exit(0)
 
         eval_stats, val_loss = validate_simcc(cfg, val_dataloader, val_dataset, model, criterion, epoch)
 
@@ -158,7 +171,7 @@ def train(config_fname: str) -> None:
             best_ap = eval_stats['AP']
             logger.info(f"Best AP is updated! {eval_stats['AP']:.4f}")
 
-        checkpoint_fpath = os.path.join(checkpoint_dir, "checkpoint_{epoch}.pth")
+        checkpoint_fpath = os.path.join(checkpoint_dir, f"checkpoint_{epoch}.pth")
         torch.save({
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
@@ -173,6 +186,8 @@ def train(config_fname: str) -> None:
     logger.info('Model training is complete')
 
 
-
 if __name__ == '__main__':
-    train(sys.argv[1])
+    config_fname = sys.argv[1]
+    assert(sys.argv[2] in ["real", "debug"])
+    debug_mode = sys.argv[2] == "debug"
+    train(config_fname, debug_mode)
