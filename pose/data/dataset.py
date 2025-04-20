@@ -4,6 +4,7 @@ Dataset modules
 
 import copy
 import os
+import pickle
 from collections import OrderedDict
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -41,10 +42,13 @@ class CocoDataset(Dataset):
     def __init__(self,
                  cfg: CfgNode,
                  is_train: bool,
+                 is_debug: bool = False,
                  transform: Optional[Any] = None
                  ) -> None:
         self._init_coco_info()
+        self.is_train = is_train
         data_cfg = cfg.DATA_TRAIN if is_train else cfg.DATA_VAL
+        self.is_debug = is_debug
 
         self.anno_fname = data_cfg.ANNOTATION_FNAME
         with open(self.anno_fname) as _anno_fin:
@@ -99,12 +103,13 @@ class CocoDataset(Dataset):
         self._dataset = list[DataSample]()
 
         # TODO: need to delete after verification
-        anno_set = set([183020, 183030, 183050, 183062, 183092, 183103, 183141, 183194, 183263, 183277])
+        # anno_set = set([183020, 183030, 183050, 183062, 183092, 183103, 183141, 183194, 183263, 183277])
+        # anno_set = set([183020])
 
         for _anno in anno['annotations']:
             # TODO: need to delete after verification
-            if _anno['id'] not in anno_set:
-                continue
+            # if _anno['id'] not in anno_set:
+            #    continue
 
             if _anno['iscrowd'] != 0:
                 num_skip_crowd += 1
@@ -185,7 +190,7 @@ class CocoDataset(Dataset):
             keypoints = keypoints.hflip(image_meta.w)
 
         trans = get_affine_transform(bbox, rotate, self.nn_input_size_wh)
-        input = cv2.warpAffine(
+        input_phase1 = cv2.warpAffine(
             image_numpy,
             trans,
             (int(self.nn_input_size_wh[0]), int(self.nn_input_size_wh[1])),
@@ -194,7 +199,9 @@ class CocoDataset(Dataset):
         keypoints = keypoints.affine_transform(trans)
 
         if self.transform is not None:
-            input = self.transform(input)
+            input_phase2 = self.transform(input_phase1)
+        else:
+            input_phase2 = input_phase1
 
         target_x, target_y, target_weight = self._generate_simcc_label(keypoints)
         meta = {"image_id": torch.tensor(sample.image_id).type(torch.long),
@@ -204,7 +211,19 @@ class CocoDataset(Dataset):
                 "keypoints": keypoints.get_kps(),
                 "vis": keypoints.get_vis()}
 
-        return input, target_x, target_y, target_weight, meta
+        if self.is_debug:
+            probe = {"bbox": bbox.get_xywh(), "image_numpy": image_numpy,
+                     "origin_kps": keypoints.get_kps(), "origin_vis": keypoints.get_vis(),
+                     "scale": scale, "rotate": rotate, "center": bbox.get_center_xy(),
+                     "affine_trans": trans, "input_phase1": input_phase1, "input_phase2": input_phase2,
+                     "final_kps": keypoints.get_kps(), "final_vis": keypoints.get_vis(),
+                     "anno_id": sample.id, "image_id": sample.image_id,
+                     "target_x": target_x, "target_y": target_y, "target_weight": target_weight}
+            category = "train" if self.is_train else "val"
+            with open(f"debug/pose_nn_input_{category}_annoid{sample.id}.pkl", "wb") as fout:
+                pickle.dump(probe, fout, pickle.HIGHEST_PROTOCOL)
+
+        return input_phase2, target_x, target_y, target_weight, meta
 
     def __getitem__(self, idx: int)\
         -> tuple[Any, Tensor, Tensor, Tensor, Dict]:
@@ -212,8 +231,7 @@ class CocoDataset(Dataset):
         rotate = 0
         scale = 1.0
 
-        if False:
-        # if self.do_data_augment:
+        if self.do_data_augment:
             if np.random.random() <= self.flip_proba:
                 hflip = True
             if np.random.random() <= self.rotate_proba:
@@ -232,8 +250,8 @@ class CocoDataset(Dataset):
         w, h = self.nn_input_size_wh
         sf = self.simcc_split_factor
 
-        target_x = torch.zeros((self.num_keypoints, w * sf), dtype=torch.float32)
-        target_y = torch.zeros((self.num_keypoints, h * sf), dtype=torch.float32)
+        target_x = np.zeros((self.num_keypoints, int(w * sf)), dtype=np.float32)
+        target_y = np.zeros((self.num_keypoints, int(h * sf)), dtype=np.float32)
 
         sigma = self.simcc_sigma
         buffer = sigma * 3
@@ -248,19 +266,19 @@ class CocoDataset(Dataset):
             if ulx < 0 or uly < 0 or brx > w or bry > h:
                 target_weight[kp_idx] = 0.0
 
-            if target_weight[kp_idx] < 1e-10:
+            if target_weight[kp_idx] < 0.5:
                 continue
 
             # Space-aware Gaussian label smoothing
             mu_x = kx * sf
             mu_y = ky * sf
-            x = torch.arange(0, int(w * sf), 1, dtype=torch.float32)
-            y = torch.arange(0, int(h * sf), 1, dtype=torch.float32)
+            x = np.arange(0, int(w * sf), 1, dtype=np.float32)
+            y = np.arange(0, int(h * sf), 1, dtype=np.float32)
             denom = sigma * np.sqrt(np.pi * 2)
-            target_x[kp_idx] = (torch.exp(- ((x - mu_x) ** 2) / (2 * sigma ** 2))) / denom
-            target_y[kp_idx] = (torch.exp(- ((y - mu_y) ** 2) / (2 * sigma ** 2))) / denom
+            target_x[kp_idx] = (np.exp(- ((x - mu_x) ** 2) / (2 * sigma ** 2))) / denom
+            target_y[kp_idx] = (np.exp(- ((y - mu_y) ** 2) / (2 * sigma ** 2))) / denom
 
-        return target_x, target_y, target_weight
+        return torch.from_numpy(target_x), torch.from_numpy(target_y), target_weight
 
     def get_connected_keypoints(self, keypoint_idx: int) -> list[int]:
         ret = set()

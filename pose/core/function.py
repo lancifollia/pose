@@ -48,7 +48,7 @@ def train_simcc(cfg: CfgNode,
                 criterion: nn.Module,
                 optimizer: optim.Optimizer,
                 epoch: int,
-                debug: bool = False
+                is_debug: bool = False
                 ) -> float:
 
     data_time = AverageMeter()
@@ -73,7 +73,7 @@ def train_simcc(cfg: CfgNode,
         output_x, output_y = model(input)
         loss = criterion(output_x, output_y, target_x, target_y, target_weight)
 
-        if debug:
+        if is_debug:
             d = {"input": input, "meta": meta,
                  "target_x": target_x.cpu(), "target_y": target_y.cpu(),
                  "target_weight": target_weight.cpu(),
