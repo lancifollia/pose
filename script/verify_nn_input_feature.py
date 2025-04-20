@@ -6,8 +6,8 @@ import torch
 from loguru import logger
 
 
-pose_fpath = "nn_input_compare/pose_batch_data.pkl"
-simcc_fpath = "nn_input_compare/simcc_batch_data.pkl"
+pose_fpath = "compare/pose_batch_data.pkl"
+simcc_fpath = "compare/simcc_batch_data.pkl"
 
 with open(pose_fpath, "rb") as fin:
     pose = pickle.load(fin)
@@ -47,8 +47,6 @@ for anno_id in pose_dict.keys():
     for attr in ['input', 'target_x', 'target_y', 'target_weight']:
         _pose = pose_dict[anno_id][attr]
         _simcc = simcc_dict[anno_id][attr]
-        import pdb
-        pdb.set_trace()
         if torch.allclose(_pose.cpu(), _simcc.cpu()):
             logger.info(f"{attr} verification: pass")
         else:
