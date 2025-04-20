@@ -67,7 +67,7 @@ def dump_parameters(model: nn.Module, path: str) -> None:
         pickle.dump(params, fout, pickle.HIGHEST_PROTOCOL)
 
 
-def train(config_fname: str, is_debug: bool = False) -> None:
+def train(config_fname: str) -> None:
     cfg = get_cfg_defaults()
 
     cfg.merge_from_file(config_fname)
@@ -80,10 +80,12 @@ def train(config_fname: str, is_debug: bool = False) -> None:
     set_random_seed(42)
     model = get_model(cfg, need_init_weights=True).cuda()
 
-    if is_debug:
+    pathlib.Path("debug/").mkdir(parents=True, exist_ok=True)
+
+    if cfg.DEBUG.INITED_MODEL_PARAM:
         fpath = 'debug/pose_init_model.pt'
         dump_parameters(model, fpath)
-        logger.info(f"Initiali model parameter dumped: {fpath}")
+        logger.warning(f"Initial model parameter dumped: {fpath}")
 
     logger.info(f"Model: {model}")
     total_param_size = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -100,20 +102,15 @@ def train(config_fname: str, is_debug: bool = False) -> None:
                   std=[0.229, 0.224, 0.225])
     ])
     logger.info("Preapring training dataset")
-    tr_dataset = CocoDataset(cfg, is_train=True, is_debug=is_debug,
+    tr_dataset = CocoDataset(cfg, is_train=True, is_debug=cfg.DEBUG.TRAIN_DATA_SAMPLE,
                              transform=input_transform)
     logger.info("Preparing validation dataset")
-    val_dataset = CocoDataset(cfg, is_train=False, is_debug=is_debug,
+    val_dataset = CocoDataset(cfg, is_train=False, is_debug=cfg.DEBUG.VAL_DATA_SAMPLE,
                               transform=input_transform)
     logger.info("Preapring dataloader")
-    if is_debug:
-        do_tr_dataloader_shuffle = False
-        logger.warning("Do not shuffle training data loader")
-    else:
-        do_tr_dataloader_shuffle = True
     tr_dataloader = DataLoader(tr_dataset,
                                batch_size=cfg.DATA_LOADER.BATCH_SIZE,
-                               shuffle=do_tr_dataloader_shuffle,
+                               shuffle=cfg.DATA_LOADER.TRAIN_DATA_SHUFFLE,
                                num_workers=cfg.DATA_LOADER.NUM_WORKERS,
                                pin_memory=cfg.DATA_LOADER.USE_PIN_MEMORY,
                                )
@@ -139,8 +136,6 @@ def train(config_fname: str, is_debug: bool = False) -> None:
     checkpoint_dir = "checkpoints"
     pathlib.Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
-    logger.warning(f"Debug mode: {is_debug}")
-
     begin_epoch = 0
     best_ap = -1.0
 
@@ -148,16 +143,27 @@ def train(config_fname: str, is_debug: bool = False) -> None:
         start_ts = time.time()
         logger.info(f"{'=-'*5} Epoch[{epoch}] started {'-='*5}")
 
-        train_loss = train_simcc(cfg, tr_dataloader, model, criterion, optimizer, epoch, is_debug)
+        train_loss = train_simcc(cfg=cfg,
+                                 tr_dataloader=tr_dataloader,
+                                 model=model,
+                                 criterion=criterion,
+                                 optimizer=optimizer,
+                                 epoch=epoch,
+                                 is_debug=cfg.DEBUG.FORWARD)
         lr_scheduler.step()
 
-        if is_debug:
+        if cfg.DEBUG.TRAINED_MODEL_PARAM:
             fpath = "debug/pose_epoch{epoch:03}_model.pt"
             dump_parameters(model, fpath)
-            logger.info(f"Intermediate model dumped: {fpath}")
+            logger.warning(f"Trained model param dumped: {fpath}")
             exit(0)
 
-        eval_stats, val_loss = validate_simcc(cfg, val_dataloader, val_dataset, model, criterion, epoch)
+        eval_stats, val_loss = validate_simcc(cfg=cfg,
+                                              val_dataloader=val_dataloader,
+                                              val_dataset=val_dataset,
+                                              model=model,
+                                              criterion=criterion,
+                                              epoch=epoch)
 
         with open(logging_fname, 'a') as fout:
             _vals = [f"{epoch}"]
@@ -188,8 +194,4 @@ def train(config_fname: str, is_debug: bool = False) -> None:
 
 if __name__ == '__main__':
     config_fname = sys.argv[1]
-    assert(sys.argv[2] in ["real", "debug"])
-    is_debug = sys.argv[2] == "debug"
-    if is_debug:
-        pathlib.Path("debug/").mkdir(parents=True, exist_ok=True)
-    train(config_fname, is_debug)
+    train(config_fname)
