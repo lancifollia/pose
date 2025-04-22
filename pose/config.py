@@ -34,6 +34,8 @@ _C.DEBUG.TRAINED_MODEL_PARAM = False
 _C.DATA_TRAIN = CN()
 _C.DATA_TRAIN.ANNOTATION_FNAME = "/home/dev/data/coco/annotations/person_keypoints_train2017.json"
 _C.DATA_TRAIN.IMAGE_DIR = "/home/dev/data/coco/images/train2017/"
+# Restrict image_ids to use during training. (list of image_ids or null)
+_C.DATA_TRAIN.TARGET_IMAGES = None
 
 
 """Training Data >> Data augmentation"""
@@ -53,6 +55,8 @@ _C.DATA_VAL = CN()
 _C.DATA_VAL.ANNOTATION_FNAME = "/home/dev/data/coco/annotations/person_keypoints_val2017.json"
 _C.DATA_VAL.IMAGE_DIR = "/home/dev/data/coco/images/val2017/"
 _C.DATA_VAL.DATA_AUG = None
+# Restrict image_ids to use during validation. (list of image_ids or null)
+_C.DATA_VAL.TARGET_IMAGES = None
 
 
 """Model"""

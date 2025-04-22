@@ -8,7 +8,7 @@ import pickle
 from collections import OrderedDict
 from contextlib import redirect_stdout
 from pathlib import Path
-from typing import Any, Dict, Optional, NamedTuple
+from typing import Any, Dict, List, Optional, NamedTuple
 
 import cv2
 import numpy as np
@@ -25,17 +25,14 @@ from pose.data.datatype import BBox, KeyPoints
 from pose.data.transforms import get_affine_transform
 
 
-class ImageMeta(NamedTuple):
-    fpath: str  # image file path
-    w: int      # width of the image
-    h: int      # height of the image
-
-
 class DataSample(NamedTuple):
     keypoints: KeyPoints
     bbox: BBox
     image_id: int
-    id: int
+    anno_id: int
+    image_width: int
+    image_height: int
+    image_fpath: str
 
 
 class CocoDataset(Dataset):
@@ -45,17 +42,11 @@ class CocoDataset(Dataset):
                  is_debug: bool = False,
                  transform: Optional[Any] = None
                  ) -> None:
-        self._init_coco_info()
         self.is_train = is_train
         data_cfg = cfg.DATA_TRAIN if is_train else cfg.DATA_VAL
         self.is_debug = is_debug
 
-        self.anno_fname = data_cfg.ANNOTATION_FNAME
-        with open(self.anno_fname) as _anno_fin:
-            anno = orjson.loads(_anno_fin.read())
-        logger.info(f"Annotation fname: {self.anno_fname}")
-        self.image_dir = data_cfg.IMAGE_DIR
-        logger.info(f"Image file directory: {self.image_dir}")
+        self._init_coco_data(data_cfg)
 
         self.nn_input_size_wh = cfg.MODEL.INPUT_SIZE_WH
         logger.info(f"NN input size(width, height): {self.nn_input_size_wh}")
@@ -86,82 +77,113 @@ class CocoDataset(Dataset):
             self.scale_factor = data_aug_cfg.SCALE_FACTOR
         logger.info(f"Data augmentation: {self.do_data_augment}")
 
-        # load image meta data
-        self._image_meta = {}
-        for _image in anno['images']:
-            m = ImageMeta(fpath=os.path.join(self.image_dir, _image['file_name']),
-                          w=_image['width'], h=_image['height'])
-            self._image_meta[_image['id']] = m
-        logger.info(f"Num images: {len(self._image_meta):,d}")
-
-        # load keypoint data
-        logger.info(f"Num raw annotations: {len(anno['annotations']):,d}")
-        num_skip_crowd = 0
-        num_skip_not_human = 0
-        num_skip_insufficient_keypoints = 0
-        num_skip_invalid_bbox = 0
-        self._dataset = list[DataSample]()
-
-        # TODO: need to delete after verification
-        # anno_set = set([183020, 183030, 183050, 183062, 183092, 183103, 183141, 183194, 183263, 183277])
-        # anno_set = set([183020])
-
-        for _anno in anno['annotations']:
-            # TODO: need to delete after verification
-            # if _anno['id'] not in anno_set:
-            #    continue
-
-            if _anno['iscrowd'] != 0:
-                num_skip_crowd += 1
-                continue
-            if _anno['category_id'] != 1:  # category_id==1: person
-                num_skip_not_human += 1
-                continue
-            # 17 keypoints (COCO dataset format: 3dim(x,y,vis) for each kp)
-            kp = KeyPoints(anno=_anno['keypoints'], data_format=self.data_format)
-            if kp.num_visible() < self.min_keypoints:
-                num_skip_insufficient_keypoints += 1
-                continue
-            # Sanitize bbox data
-            image_meta = self._image_meta[_anno['image_id']]
-            iw = image_meta.w
-            ih = image_meta.h
-            x, y, bw, bh = _anno['bbox']
-            x1 = max(0, x)
-            y1 = max(0, y)
-            x2 = min(iw - 1, x1 + max(0, bw - 1))
-            y2 = min(ih - 1, y1 + max(0, bh - 1))
-            if _anno['area'] > 0 and x2 >= x1 and y2 >= y1:
-                bbox = BBox(x=x1, y=y1, w=x2-x1, h=y2-y1)
-                self._dataset.append(DataSample(keypoints=kp, bbox=bbox,
-                                                image_id=_anno['image_id'], id=_anno['id']))
-            else:
-                num_skip_invalid_bbox += 1
-        logger.info(f"skip crowd: {num_skip_crowd:,d}")
-        logger.info(f"skip not human: {num_skip_not_human:,d}")
-        logger.info(f"skip insufficient keypoints: {num_skip_insufficient_keypoints:,d}")
-        logger.info(f"skip invalid bbox: {num_skip_invalid_bbox:,d}")
-        logger.info(f"minimum keypoints cutoff: {self.min_keypoints}")
-        logger.info(f"Num final dataset(keypoints annotation) size: {len(self._dataset):,d}")
-
-    def _init_coco_info(self) -> None:
+    def _init_coco_data(self, data_cfg: CfgNode) -> None:
         self.data_format = "COCO"
-        self.num_keypoints = 17
 
+        self.anno_fname = data_cfg.ANNOTATION_FNAME
+        logger.info(f"Annotation fname: {self.anno_fname}")
+        self.coco = COCO(self.anno_fname)
+
+        self.image_dir = data_cfg.IMAGE_DIR
+        logger.info(f"Image file directory: {self.image_dir}")
+
+        # Deal with class names
+        categories = [cat['name'] for cat in self.coco.loadCats(self.coco.getCatIds())]
+        self.classes = ['__background__'] + categories
+        logger.info(f"COCO data classes: {self.classes}")
+        self.num_classes = len(self.classes)
+        self.class_to_ind = dict(zip(self.classes, range(self.num_classes)))
+        self.class_to_coco_ind = dict(zip(categories, self.coco.getCatIds()))
+        self.coco_ind_to_class_ind = dict(
+            [
+                (self.class_to_coco_ind[cls], self.class_to_ind[cls])
+                for cls in self.classes[1:]
+            ]
+        )
+
+        # Load image file names (image_id: int)
+        if data_cfg.TARGET_IMAGES:
+            self.target_image_ids = data_cfg.TARGET_IMAGES
+            logger.warning(f"Retrict target images(size: {len(self.target_image_ids):,}): {self.target_image_ids}")
+        else:
+            self.target_image_ids = self.coco.getImgIds()
+        self.num_images = len(self.target_image_ids)
+        logger.info(f"number of target images: {self.num_images} (is_train: {self.is_train})")
+
+        self.num_keypoints = 17
         kp_labels = ['nose', 'L-eye', 'R-eye', 'L-ear', 'R-ear',
                      'L-shder', 'R-shder', 'L-elb', 'R-elb',
                      'L-wrst', 'R-wrst', 'L-hip', 'R-hip',
                      'L-knee', 'R-knee', 'L-ankl', 'R-ankl']
         self._keypoints_idx2name = {idx: name for idx, name in enumerate(kp_labels)}
         logger.info(f"Keypoints idx2name: {self._keypoints_idx2name.items()}")
-
         # using 0-based skeleton index (ref. COCO dataset using 1-based index)
         self.skeleton = [[15, 13], [13, 11], [16, 14], [14, 12], [11, 12], [5, 11],
                          [6, 12], [5, 6], [5, 7], [6, 8], [7, 9], [8, 10], [1, 2],
                          [0, 1], [0, 2], [1, 3], [2, 4], [3, 5], [4, 6]]
 
+        self._dataset = self._load_coco_keypoint_annotations()
+        logger.info(f"Load {len(self._dataset):,} samples")
+
     def __len__(self) -> int:
         return len(self._dataset)
+
+    def _load_coco_keypoint_annotations(self) -> List[DataSample]:
+        """Load ground truth bbox and keypoints"""
+        gt_dataset = []
+        for target_image_id in self.target_image_ids:
+            gt_dataset.extend(self._load_coco_keypoint_annotation_kernel(target_image_id))
+        return gt_dataset
+
+    def _load_coco_keypoint_annotation_kernel(self, image_id: int) -> List[DataSample]:
+        """
+        coco ann: [u'segmentation', u'area', u'iscrowd', u'image_id', u'bbox', u'category_id', u'id']
+        iscrowd:
+            crowd instances are handled by marking their overlaps with all categories to -1
+            and later excluded in training
+        bbox:
+            [x1, y1, w, h]
+        :param image_id: coco image id
+        :return: db entry
+        """
+        image_meta = self.coco.loadImgs(image_id)[0]
+        image_width = image_meta['width']
+        image_height = image_meta['height']
+
+        anno_ids = self.coco.getAnnIds(imgIds=image_id, iscrowd=False)
+        objs = self.coco.loadAnns(anno_ids)
+
+        # sanitize bboxes
+        valid_objs = []
+        for obj in objs:
+            x, y, w, h = obj['bbox']
+            x1 = np.max((0, x))
+            y1 = np.max((0, y))
+            x2 = np.min((image_width - 1, x1 + np.max((0, w - 1))))
+            y2 = np.min((image_height - 1, y1 + np.max((0, h - 1))))
+            if obj['area'] > 0 and x2 >= x1 and y2 >= y1:
+                obj['clean_bbox'] = [x1, y1, x2-x1, y2-y1]
+                valid_objs.append(obj)
+
+        ret = []
+        for obj in valid_objs:
+            cls = self.coco_ind_to_class_ind[obj['category_id']]
+            if cls != 1:  # cls:1 => person
+                continue
+
+            # ignore objects without keypoints annotation
+            if max(obj['keypoints']) == 0:
+                continue
+
+            kp = KeyPoints(anno=obj['keypoints'], data_format=self.data_format)
+            x1, y1, w, h = obj['clean_bbox']
+            bbox = BBox(x=x1, y=y1, w=w, h=h)
+            ret.append(DataSample(keypoints=kp, bbox=bbox,
+                                  image_id=image_id, anno_id=obj['id'],
+                                  image_width=image_width, image_height=image_height,
+                                  image_fpath=os.path.join(self.image_dir, image_meta['file_name'])
+                                  ))
+        return ret
 
     def get_item(self,
                  idx: int,
@@ -170,8 +192,7 @@ class CocoDataset(Dataset):
                  scale: float = 1.0
                  ) -> tuple[Any, Tensor, Tensor, Tensor, Dict]:
         sample = self.get_sample(idx)
-        image_meta = self.get_image_meta(sample.image_id)
-        image_path = image_meta.fpath
+        image_path = sample.image_fpath
 
         bbox = sample.bbox.transform(self.aspect_ratio, self.bbox_scale_factor * scale)
 
@@ -186,8 +207,8 @@ class CocoDataset(Dataset):
 
         if hflip is True:
             image_numpy = image_numpy[:, ::-1, :]
-            bbox = bbox.hflip(image_meta.w)
-            keypoints = keypoints.hflip(image_meta.w)
+            bbox = bbox.hflip(sample.image_width)
+            keypoints = keypoints.hflip(sample.image_width)
 
         trans = get_affine_transform(bbox, rotate, self.nn_input_size_wh)
         input_phase1 = cv2.warpAffine(
@@ -205,7 +226,7 @@ class CocoDataset(Dataset):
 
         target_x, target_y, target_weight = self._generate_simcc_label(keypoints)
         meta = {"image_id": torch.tensor(sample.image_id).type(torch.long),
-                "anno_id": torch.tensor(sample.id).type(torch.long),
+                "anno_id": torch.tensor(sample.anno_id).type(torch.long),
                 "origin_bbox": torch.tensor(sample.bbox.get_xywh()).type(torch.float),
                 "bbox": torch.tensor(bbox.get_xywh()).type(torch.float),
                 "keypoints": keypoints.get_kps(),
@@ -217,10 +238,10 @@ class CocoDataset(Dataset):
                      "scale": scale, "rotate": rotate, "center": bbox.get_center_xy(),
                      "affine_trans": trans, "input_phase1": input_phase1, "input_phase2": input_phase2,
                      "final_kps": keypoints.get_kps(), "final_vis": keypoints.get_vis(),
-                     "anno_id": sample.id, "image_id": sample.image_id,
+                     "anno_id": sample.anno_id, "image_id": sample.image_id,
                      "target_x": target_x, "target_y": target_y, "target_weight": target_weight}
             category = "train" if self.is_train else "val"
-            with open(f"debug/pose_nn_input_{category}_annoid{sample.id}.pkl", "wb") as fout:
+            with open(f"debug/pose_nn_input_{category}_annoid{sample.anno_id}.pkl", "wb") as fout:
                 pickle.dump(probe, fout, pickle.HIGHEST_PROTOCOL)
 
         return input_phase2, target_x, target_y, target_weight, meta
@@ -288,9 +309,6 @@ class CocoDataset(Dataset):
             elif b == keypoint_idx:
                 ret.add(a)
         return list(ret)
-
-    def get_image_meta(self, image_idx: int) -> ImageMeta:
-        return copy.deepcopy(self._image_meta[image_idx])
 
     def get_sample(self, sample_idx: int) -> DataSample:
         return copy.deepcopy(self._dataset[sample_idx])
