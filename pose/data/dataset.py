@@ -8,11 +8,12 @@ import pickle
 from collections import OrderedDict
 from contextlib import redirect_stdout
 from pathlib import Path
-from typing import Any, Dict, List, Optional, NamedTuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
-import orjson
+import numpy.typing as npt
+import orjson as json
 import torch
 from loguru import logger
 from pycocotools.coco import COCO
@@ -21,18 +22,8 @@ from torch import Tensor
 from torch.utils.data import Dataset
 from yacs.config import CfgNode
 
-from pose.data.datatype import BBox, KeyPoints
+from pose.data.datatype import DataSample, KeyPoints
 from pose.data.transforms import get_affine_transform
-
-
-class DataSample(NamedTuple):
-    keypoints: KeyPoints
-    bbox: BBox
-    image_id: int
-    anno_id: int
-    image_width: int
-    image_height: int
-    image_fpath: str
 
 
 class CocoDataset(Dataset):
@@ -46,8 +37,6 @@ class CocoDataset(Dataset):
         data_cfg = cfg.DATA_TRAIN if is_train else cfg.DATA_VAL
         self.is_debug = is_debug
 
-        self._init_coco_data(data_cfg)
-
         self.nn_input_size_wh = cfg.MODEL.INPUT_SIZE_WH
         logger.info(f"NN input size(width, height): {self.nn_input_size_wh}")
         self.aspect_ratio = self.nn_input_size_wh[0] * 1.0 / self.nn_input_size_wh[1]
@@ -55,7 +44,7 @@ class CocoDataset(Dataset):
         self.bbox_scale_factor = 1.25
         logger.info(f"BBox scale factor: {self.bbox_scale_factor:.4f}")
 
-        self.min_keypoints = cfg.DATA_COMMON.MIN_KEYPOINTS
+        self._init_coco_data(data_cfg)
 
         self.simcc_split_factor = cfg.MODEL.EXTRA.SIMCC_SPLIT_FACTOR
         self.simcc_sigma = cfg.MODEL.EXTRA.SIMCC_SIGMA
@@ -137,14 +126,15 @@ class CocoDataset(Dataset):
 
     def _load_coco_keypoint_annotation_kernel(self, image_id: int) -> List[DataSample]:
         """
-        coco ann: [u'segmentation', u'area', u'iscrowd', u'image_id', u'bbox', u'category_id', u'id']
+        coco annotation:
+            ['segmentation', 'area', 'iscrowd', 'image_id', 'bbox', 'category_id', 'id']
         iscrowd:
             crowd instances are handled by marking their overlaps with all categories to -1
             and later excluded in training
         bbox:
             [x1, y1, w, h]
         :param image_id: coco image id
-        :return: db entry
+        :return: dataset
         """
         image_meta = self.coco.loadImgs(image_id)[0]
         image_width = image_meta['width']
@@ -176,14 +166,27 @@ class CocoDataset(Dataset):
                 continue
 
             kp = KeyPoints(anno=obj['keypoints'], data_format=self.data_format)
-            x1, y1, w, h = obj['clean_bbox']
-            bbox = BBox(x=x1, y=y1, w=w, h=h)
-            ret.append(DataSample(keypoints=kp, bbox=bbox,
-                                  image_id=image_id, anno_id=obj['id'],
+            bbox_center, bbox_scale = self.bbox_to_center_scale(*obj['clean_bbox'])
+            ret.append(DataSample(image_id=image_id, anno_id=obj['id'],
                                   image_width=image_width, image_height=image_height,
-                                  image_fpath=os.path.join(self.image_dir, image_meta['file_name'])
+                                  image_fpath=os.path.join(self.image_dir, image_meta['file_name']),
+                                  bbox_center=bbox_center, bbox_scale=bbox_scale, keypoints=kp
                                   ))
         return ret
+
+    def bbox_to_center_scale(self, x: int, y: int, w: int, h: int
+                             ) -> Tuple[npt.NDArray, npt.NDArray]:
+        center = np.zeros(2, dtype=np.float32)
+        center[0] = x + w * 0.5
+        center[1] = y + h * 0.5
+
+        if w > self.aspect_ratio * h:
+            h = w * 1.0 / self.aspect_ratio
+        elif w < self.aspect_ratio * h:
+            w = h * self.aspect_ratio
+        sf = self.bbox_scale_factor
+        scale = np.array([w * sf, h * sf], dtype=np.float32)
+        return center, scale
 
     def get_item(self,
                  idx: int,
@@ -194,8 +197,6 @@ class CocoDataset(Dataset):
         sample = self.get_sample(idx)
         image_path = sample.image_fpath
 
-        bbox = sample.bbox.transform(self.aspect_ratio, self.bbox_scale_factor * scale)
-
         # shape: (height, width, color channels)
         image_numpy = cv2.imread(image_path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
 
@@ -203,14 +204,16 @@ class CocoDataset(Dataset):
             logger.error(f"=> fail to read {image_path}")
             raise ValueError(f"Fail to read {image_path}")
 
+        bbox_center = sample.bbox_center
+        bbox_scale = sample.bbox_scale
         keypoints = sample.keypoints
 
         if hflip is True:
             image_numpy = image_numpy[:, ::-1, :]
-            bbox = bbox.hflip(sample.image_width)
             keypoints = keypoints.hflip(sample.image_width)
+            bbox_center[0] = image_numpy.shape[1] - bbox_center[0] - 1
 
-        trans = get_affine_transform(bbox, rotate, self.nn_input_size_wh)
+        trans = get_affine_transform(bbox_center, bbox_scale, rotate, self.nn_input_size_wh)
         input_phase1 = cv2.warpAffine(
             image_numpy,
             trans,
@@ -227,15 +230,16 @@ class CocoDataset(Dataset):
         target_x, target_y, target_weight = self._generate_simcc_label(keypoints)
         meta = {"image_id": torch.tensor(sample.image_id).type(torch.long),
                 "anno_id": torch.tensor(sample.anno_id).type(torch.long),
-                "origin_bbox": torch.tensor(sample.bbox.get_xywh()).type(torch.float),
-                "bbox": torch.tensor(bbox.get_xywh()).type(torch.float),
+                "bbox_center": bbox_center,
+                "bbox_scale": bbox_scale,
                 "keypoints": keypoints.get_kps(),
                 "vis": keypoints.get_vis()}
 
         if self.is_debug:
-            probe = {"bbox": bbox.get_xywh(), "image_numpy": image_numpy,
+            probe = {"image_numpy": image_numpy,
                      "origin_kps": keypoints.get_kps(), "origin_vis": keypoints.get_vis(),
-                     "scale": scale, "rotate": rotate, "center": bbox.get_center_xy(),
+                     "rotate": rotate, "scale": scale,
+                     "bbox_center": bbox_center, "bbox_scale": bbox_scale,
                      "affine_trans": trans, "input_phase1": input_phase1, "input_phase2": input_phase2,
                      "final_kps": keypoints.get_kps(), "final_vis": keypoints.get_vis(),
                      "anno_id": sample.anno_id, "image_id": sample.image_id,
@@ -343,7 +347,7 @@ class CocoDataset(Dataset):
         Path(dump_dir).mkdir(parents=True, exist_ok=True)
         pred_dump_fname = f"{dump_dir}/pred_dump_epoch{epoch}"
         with open(pred_dump_fname, 'wb') as fout:
-            fout.write(orjson.dumps(pred_dump))
+            fout.write(json.dumps(pred_dump))
         logger.info(f"Dumps validation data prediction results: {pred_dump_fname}")
         with redirect_stdout(None):  # mute the cocoapi internal print methods.
             coco_gt = COCO(self.anno_fname)

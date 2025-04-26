@@ -35,13 +35,9 @@ def verify_batch_data(epoch, n_iter):
 
     # center
     simcc_center = simcc['meta']['center']
-    pose_bbox = pose['meta']['bbox']
-    pose_center = torch.zeros(simcc_center.shape)
-    pose_center[:,0] = pose_bbox[:,0] + pose_bbox[:,2] * 0.5
-    pose_center[:,1] = pose_bbox[:,1] + pose_bbox[:,3] * 0.5
+    pose_center = pose['meta']['bbox_center']
     if (pose_center - simcc_center).abs().sum() > 0.0:
         logger.warning("[bbox center] exact matching failed")
-        logger.warning(f"pose bbox:\n{pose_bbox}")
         logger.warning(f"pose bbox center:\n{pose_center}")
         logger.warning(f"simcc bbox center:\n{simcc_center}")
     else:

@@ -1,65 +1,21 @@
 from __future__ import annotations
 
 import copy
+from typing import NamedTuple
 
 import numpy as np
 import numpy.typing as npt
 
 
-class BBox(object):
-    def __init__(self, x: float, y: float, w: float, h: float, scale: float = 1.0) -> None:
-        self.scale = scale
-
-        self.x = x                  # left upper x coordinate
-        self.y = y                  # left upper y coordinate
-        self.w = w * self.scale     # widht of the bounding box
-        self.h = h * self.scale     # height of the bounding box
-
-    def __repr__(self):
-        return self._to_string()
-
-    def __str__(self):
-        return self._to_string()
-
-    def _to_string(self) -> str:
-        return f"x({self.x:.2f}) y({self.y:.2f}) w({self.w:.2f}) h({self.h:.2f}) scale({self.scale:.2f})"
-
-    def transform(self, aspect_ratio: float, scale: float) -> BBox:
-        ret = copy.deepcopy(self)
-
-        cx = ret.x + ret.w * 0.5
-        cy = ret.y + ret.h * 0.5
-
-        ret.w = ret.w * scale  # scaled width
-        ret.h = ret.h * scale  # scaled height
-        ret.scale = scale
-
-        if ret.w > aspect_ratio * ret.h:
-            ret.h = ret.w * 1.0 / aspect_ratio
-        elif ret.w < aspect_ratio * ret.h:
-            ret.w = ret.h * aspect_ratio
-
-        ret.x = cx - ret.w * 0.5
-        ret.y = cy - ret.h * 0.5
-
-        return ret
-
-    def hflip(self, image_width: int) -> BBox:
-        ret = copy.deepcopy(self)
-        ret.x = image_width - ret.x - ret.w
-        return ret
-
-    def get_xywh(self) -> list[float]:
-        return [self.x, self.y, self.w, self.h]
-
-    def get_center_xy(self) -> list[float]:
-        return [self.x + self.w * 0.5, self.y + self.h * 0.5]
-
-    def get_size_wh(self) -> list[float]:
-        return [self.w, self.h]
-
-    def get_scale(self) -> float:
-        return self.scale
+class DataSample(NamedTuple):
+    image_id: int
+    anno_id: int
+    image_width: int
+    image_height: int
+    image_fpath: str
+    bbox_center: npt.NDArray
+    bbox_scale: npt.NDArray
+    keypoints: KeyPoints
 
 
 class KeyPoints(object):

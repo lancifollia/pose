@@ -4,10 +4,9 @@ import numpy as np
 import numpy.typing as npt
 import torch
 
-from pose.data.datatype import BBox
 
-
-def get_affine_transform(bbox: BBox,
+def get_affine_transform(bbox_center: npt.NDArray,
+                         bbox_scale: npt.NDArray,
                          rotate: float,
                          out_size_wh: list[float],  # (w,h)
                          inverse=False,
@@ -16,9 +15,7 @@ def get_affine_transform(bbox: BBox,
     Since cv2.getAffineTransform() uses (x,y) coordinates,
     so this function uses (x,y) coordinates.
     """
-    center_xy = np.array(bbox.get_center_xy(), dtype=np.float32)
-    scale_wh = np.array(bbox.get_size_wh(), dtype=np.float32)
-    src_w = scale_wh[0]
+    src_w = bbox_scale[0]
 
     dst_w, dst_h = out_size_wh
 
@@ -29,8 +26,8 @@ def get_affine_transform(bbox: BBox,
     src = np.zeros((3, 2), dtype=np.float32)
     dst = np.zeros((3, 2), dtype=np.float32)
     dst_center_xy = np.array([dst_w * 0.5, dst_h * 0.5], dtype=np.float32)
-    src[0, :] = center_xy
-    src[1, :] = center_xy + src_dir
+    src[0, :] = bbox_center
+    src[1, :] = bbox_center + src_dir
     dst[0, :] = dst_center_xy
     dst[1, :] = dst_center_xy + dst_dir
 
