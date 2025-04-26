@@ -7,6 +7,18 @@ import torch
 from loguru import logger
 
 
+def matching(a, b, keyword):
+    if (a - b).abs().sum() > 0.0:
+        logger.warning(f"[{keyword}] exact matching failed")
+    else:
+        logger.info(f"[{keyword}] exact matching pass")
+
+    if torch.allclose(a, b):
+        logger.info(f"[{keyword}] allclose matching pass")
+    else:
+        logger.warning(f"[{keyword}] allclose matching failed")
+
+
 def verify_batch_data(epoch, n_iter):
     pose_fpath = f"debug/pose_batch_data_epoch{epoch:03}_iter{n_iter:03}.pkl"
     simcc_fpath = f"debug/simcc_batch_data_epoch{epoch:03}_iter{n_iter:03}.pkl"
@@ -33,24 +45,16 @@ def verify_batch_data(epoch, n_iter):
         logger.warning("annotation id list is not same.")
 
 
-    # center
-    simcc_center = simcc['meta']['center']
-    pose_center = pose['meta']['bbox_center']
-    if (pose_center - simcc_center).abs().sum() > 0.0:
-        logger.warning("[bbox center] exact matching failed")
-        logger.warning(f"pose bbox center:\n{pose_center}")
-        logger.warning(f"simcc bbox center:\n{simcc_center}")
-    else:
-        logger.info("[bbox center] exact matching pass")
-
-    if torch.allclose(pose_center, simcc_center):
-        logger.info("[bbox center] allclose matching pass")
-    else:
-        logger.warning("[bbox center] allclose matching failed")
-
-
-    # TODO: scale
-    # TODO: keypoint
+    # Check BBox center, scale, Keypoints
+    matching(simcc['meta']['center'],
+             pose['meta']['bbox_center'],
+             "bbox center")
+    matching(simcc['meta']['scale'],
+             pose['meta']['bbox_scale'] / 200,  # 200: pixel std of SimCC code
+             "bbox scale")
+    matching(simcc['meta']['joints'][:,:,:2],
+             pose['meta']['keypoints'],
+             "keypoints")
 
 
     # Check input feature, target, output
