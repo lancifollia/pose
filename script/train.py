@@ -87,7 +87,7 @@ def train(config_fname: str) -> None:
         dump_parameters(model, fpath)
         logger.warning(f"Initial model parameter dumped: {fpath}")
 
-    logger.info(f"Model: {model}")
+    # logger.info(f"Model: {model}")
     total_param_size = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logger.info(f"Model param size: {total_param_size:,}")
 
@@ -153,7 +153,7 @@ def train(config_fname: str) -> None:
         lr_scheduler.step()
 
         if cfg.DEBUG.TRAINED_MODEL_PARAM:
-            fpath = "debug/pose_epoch{epoch:03}_model.pt"
+            fpath = f"debug/pose_epoch{epoch:03}_model.pt"
             dump_parameters(model, fpath)
             logger.warning(f"Trained model param dumped: {fpath}")
             exit(0)

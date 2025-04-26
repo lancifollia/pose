@@ -22,16 +22,12 @@ def verify_parameters(pose_fpath, simcc_fpath, category):
         _pose = pose[i]
         _simcc = simcc[i]
 
-        # print("i:", i)
-        # import pdb
-        # pdb.set_trace()
-
         if _pose.shape != _simcc.shape:
             logger.error(f"[{category}](i={i}) Unmatched shape: pose({_pose.shape}) simcc({_simcc.shape})")
 
-        # if torch.allclose(_pose.cpu(), _simcc.cpu(), atol=1e-05, rtol=1e-04):
         if torch.allclose(_pose.cpu(), _simcc.cpu(), atol=1e-10, rtol=1e-08):
-            logger.info(f"[{category}](i={i}) parameter is closed")
+            # logger.info(f"[{category}](i={i}) parameter is closed")
+            pass
         else:
             logger.error(f"[{category}](i={i}) parameter is different")
             verified = False
@@ -42,14 +38,13 @@ def verify_parameters(pose_fpath, simcc_fpath, category):
         logger.error(f"[{category}] verification failed")
 
 
-# """
-verify_parameters(pose_fpath="compare/pose_init_model.pt",
-                  simcc_fpath="compare/simcc_init_model.pt",
+verify_parameters(pose_fpath="debug/pose_init_model.pt",
+                  simcc_fpath="debug/simcc_init_model.pt",
                   category="init model"
                   )
-# """
 
-verify_parameters(pose_fpath="compare/pose_1st_epoch_model.pt",
-                  simcc_fpath="compare/simcc_1st_epoch_model.pt",
-                  category="1st_epoch"
+epoch = 0
+verify_parameters(pose_fpath=f"debug/pose_epoch{epoch:03}_model.pt",
+                  simcc_fpath=f"debug/simcc_epoch{epoch:03}_model.pt",
+                  category=f"epoch{epoch:03}"
                   )
