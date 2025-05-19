@@ -178,6 +178,7 @@ class CocoDataset(Dataset):
                              ) -> Tuple[npt.NDArray, npt.NDArray]:
         center = np.zeros(2, dtype=np.float32)
         center[0] = x + w * 0.5
+
         center[1] = y + h * 0.5
 
         if w > self.aspect_ratio * h:
@@ -233,7 +234,11 @@ class CocoDataset(Dataset):
                 "bbox_center": bbox_center,
                 "bbox_scale": bbox_scale,
                 "keypoints": keypoints.get_kps(),
-                "vis": keypoints.get_vis()}
+                "vis": keypoints.get_vis(),
+                "image_np": image_numpy,
+                "trans": trans,
+                "input_phase1": input_phase1
+                }
 
         if self.is_debug:
             probe = {"image_numpy": image_numpy,

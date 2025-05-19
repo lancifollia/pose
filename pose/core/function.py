@@ -70,13 +70,14 @@ def train_simcc(cfg: CfgNode,
         target_y = target_y.cuda(non_blocking=True)
         target_weight = target_weight.cuda(non_blocking=True).float()
 
-        output_x, output_y = model(input)
+        output_x, output_y, forward_debug = model(input)
         loss = criterion(output_x, output_y, target_x, target_y, target_weight)
 
         if is_debug:
             d = {"input": input, "meta": meta,
                  "target_x": target_x.cpu(), "target_y": target_y.cpu(),
                  "target_weight": target_weight.cpu(),
+                 "forward": forward_debug,
                  "output_x": output_x.cpu(), "output_y": output_y.cpu(),
                  "loss": loss.item()
                 }
