@@ -163,7 +163,7 @@ class CocoDataset(Dataset):
 
             # anno_id filter
             # if obj['id'] != 1202318:
-            #     continue
+            #    continue
             # if self.is_train and image_id not in [184613, 522418, 554625]:
             #     continue
 
@@ -191,8 +191,8 @@ class CocoDataset(Dataset):
             h = w * 1.0 / self.aspect_ratio
         elif w < self.aspect_ratio * h:
             w = h * self.aspect_ratio
-        sf = self.bbox_scale_factor
-        scale = np.array([w * sf, h * sf], dtype=np.float32) / 200
+        scale = np.array([w * 1.0 / 200, h * 1.0 / 200], dtype=np.float32)
+        scale = scale * self.bbox_scale_factor
         return center, scale
 
     def get_item(self,
@@ -249,18 +249,6 @@ class CocoDataset(Dataset):
             meta["trans"] = torch.from_numpy(trans)
             meta["input_phase1"] = torch.from_numpy(input_phase1)
 
-            probe = {"image_numpy": image_numpy,
-                     "origin_kps": keypoints.get_kps(), "origin_vis": keypoints.get_vis(),
-                     "rotate": rotate, "scale": scale,
-                     "bbox_center": bbox_center, "bbox_scale": bbox_scale,
-                     "affine_trans": trans, "input_phase1": input_phase1, "input_phase2": input_phase2,
-                     "final_kps": keypoints.get_kps(), "final_vis": keypoints.get_vis(),
-                     "anno_id": sample.anno_id, "image_id": sample.image_id,
-                     "target_x": target_x, "target_y": target_y, "target_weight": target_weight}
-            category = "train" if self.is_train else "val"
-            with open(f"debug/pose_nn_input_{category}_annoid{sample.anno_id}.pkl", "wb") as fout:
-                pickle.dump(probe, fout, pickle.HIGHEST_PROTOCOL)
-
         return input_phase2, target_x, target_y, target_weight, meta
 
     def __getitem__(self, idx: int)\
@@ -280,8 +268,7 @@ class CocoDataset(Dataset):
 
         return self.get_item(idx, hflip, rotate, scale)
 
-    def _generate_simcc_label(self, keypoints: KeyPoints)\
-        -> tuple[Tensor, Tensor, Tensor]:
+    def _generate_simcc_label(self, keypoints: KeyPoints) -> tuple[Tensor, Tensor, Tensor]:
         target_weight = torch.zeros((self.num_keypoints, 1), dtype=torch.float32)
         target_weight[keypoints.get_vis() > 0] = 1.0
 
@@ -291,16 +278,15 @@ class CocoDataset(Dataset):
         target_x = np.zeros((self.num_keypoints, int(w * sf)), dtype=np.float32)
         target_y = np.zeros((self.num_keypoints, int(h * sf)), dtype=np.float32)
 
-        sigma = self.simcc_sigma
-        buffer = sigma * 3
+        label_smoothing_size = self.simcc_sigma * 3
         for kp_idx in range(self.num_keypoints):
             kx, ky = keypoints.get_kp(kp_idx)
 
             # Check that any part of the gaussian is in-bounds
-            ulx = int(kx - buffer)
-            uly = int(ky - buffer)
-            brx = int(kx + buffer + 1)
-            bry = int(ky + buffer + 1)
+            ulx = int(kx - label_smoothing_size)
+            uly = int(ky - label_smoothing_size)
+            brx = int(kx + label_smoothing_size + 1)
+            bry = int(ky + label_smoothing_size + 1)
             if ulx >= w or uly >= h or brx < 0 or bry < 0:
                 target_weight[kp_idx] = 0.0
 
@@ -312,9 +298,8 @@ class CocoDataset(Dataset):
             mu_y = ky * sf
             x = np.arange(0, int(w * sf), 1, dtype=np.float32)
             y = np.arange(0, int(h * sf), 1, dtype=np.float32)
-            # denom = sigma * np.sqrt(np.pi * 2)
-            target_x[kp_idx] = (np.exp(- ((x - mu_x) ** 2) / (2 * sigma ** 2))) / (sigma * np.sqrt(np.pi * 2))
-            target_y[kp_idx] = (np.exp(- ((y - mu_y) ** 2) / (2 * sigma ** 2))) / (sigma * np.sqrt(np.pi * 2))
+            target_x[kp_idx] = (np.exp(- ((x - mu_x) ** 2) / (2 * self.simcc_sigma ** 2))) / (self.simcc_sigma * np.sqrt(np.pi * 2))
+            target_y[kp_idx] = (np.exp(- ((y - mu_y) ** 2) / (2 * self.simcc_sigma ** 2))) / (self.simcc_sigma * np.sqrt(np.pi * 2))
 
         return torch.from_numpy(target_x), torch.from_numpy(target_y), target_weight
 

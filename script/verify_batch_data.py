@@ -10,7 +10,10 @@ from loguru import logger
 def matching(a, b, keyword):
     if (a - b).abs().sum() > 0.0:
         logger.warning(f"[{keyword}] exact matching failed")
-        # print(a - b)
+        print("pose:", a)
+        print("simcc:", a)
+        print("pose - simcc", a - b)
+        print("diff abs sum:", (a - b).abs().sum())
     else:
         logger.info(f"[{keyword}] exact matching pass")
 
@@ -50,7 +53,7 @@ def verify_batch_data(image_id, epoch, n_iter):
     # Check
     num_samples = pose['input'].shape[0]
     for i in range(num_samples):
-        logger.info(f"*** i={i} ***")
+        logger.info(f"*** i={i}, anno_id: {pose['meta']['anno_id'][i]} ***")
         matching(pose['meta']['bbox_center'][i].cpu(),
                  simcc['meta']['center'][i].cpu(),
                  f"meta.center,i={i}")
@@ -60,13 +63,14 @@ def verify_batch_data(image_id, epoch, n_iter):
         matching(pose['meta']['keypoints'][i].cpu(),
                  simcc['meta']['joints'][i,:,:2].cpu(),
                  f"meta.keypoints,i={i}")
-        for key in ['image_np', 'trans', 'input_phase1']:
-            matching(pose['meta'][key][i].cpu(), simcc['meta'][key][i].cpu(), f"meta.{key},i={i}")
+        # for key in ['image_np', 'trans', 'input_phase1']:
+        #     matching(pose['meta'][key][i].cpu(), simcc['meta'][key][i].cpu(), f"meta.{key},i={i}")
         for key in ['input', 'target_x', 'target_y', 'target_weight', 'output_x', 'output_y']:
             matching(pose[key][i].cpu(), simcc[key][i].cpu(), f"{key},i={i}")
         logger.info("Skip other batch data")
 
 
+    '''
     pf = pose['forward']
     sf = simcc['forward']
     for key in ['conv1', 'bn1', 'relu1', 'maxpool1',
@@ -81,13 +85,14 @@ def verify_batch_data(image_id, epoch, n_iter):
         else:
             logger.warning(f"[forward-{key}] allclose matching failed")
             # print(pf[key] - sf[key])
-
+    '''
 
     if math.fabs(pose['loss'] - simcc['loss']) > 0.0:
         logger.warning(f"[loss] exact matching failed - pose({pose['loss']}) simcc({simcc['loss']})")
     else:
         logger.info(f"[loss] exact mathcing pass - pose({pose['loss']}) simcc({simcc['loss']})")
 
+    '''
     print("pose:", pose['target_y'][0])
     print("simc:", simcc['target_y'][0])
     print("pose - simc:", pose['target_y'][0] - simcc['target_y'][0])
@@ -96,10 +101,11 @@ def verify_batch_data(image_id, epoch, n_iter):
     import pdb
     pdb.set_trace()
     print("debug")
+    '''
 
 
 if __name__ == "__main__":
-    image_ids = [184613]
+    image_ids = [318219]
     # passed = [391895, 522418]
     # failed = [184613]
     # slightly diff = [318219, 554625]

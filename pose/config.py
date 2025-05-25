@@ -10,7 +10,6 @@ _C = CN()
 _C.DATA_COMMON = CN()
 _C.DATA_COMMON.NUM_KEYPOINTS = 17  # COCO dataset
 # Minimum required keypoints for training sample.
-_C.DATA_COMMON.MIN_KEYPOINTS = 1
 
 
 """Data Loader"""
@@ -23,7 +22,6 @@ _C.DATA_LOADER.TRAIN_DATA_SHUFFLE = True
 
 """Debugging"""
 _C.DEBUG = CN()
-_C.DEBUG.DEBUG_MODE = False
 _C.DEBUG.INITED_MODEL_PARAM = False
 _C.DEBUG.TRAIN_DATA_SAMPLE = False
 _C.DEBUG.VAL_DATA_SAMPLE = False
@@ -90,6 +88,7 @@ _C.TRAIN.LR_STEP = [90, 120]
 _C.TRAIN.END_EPOCH = 140
 _C.TRAIN.LOGGING_FREQ = 100
 _C.TRAIN.SAVE_CHECKPOINTS = False
+_C.TRAIN.LOGGING_EPOCH_PERF = False
 
 
 """Validation"""

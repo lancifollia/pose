@@ -127,7 +127,7 @@ def train(config_fname: str) -> None:
         optimizer, cfg.TRAIN.LR_STEP, cfg.TRAIN.LR_FACTOR, last_epoch=-1
     )
 
-    logging_performance = False if cfg.DEBUG.DEBUG_MODE else True
+    logging_performance = cfg.TRAIN.LOGGING_EPOCH_PERF
     if logging_performance:
         logging_fname = f"perf_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.log"
         logger.info(f"performance logging file name: {logging_fname}")
