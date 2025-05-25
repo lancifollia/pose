@@ -54,7 +54,7 @@ def verify_batch_data(image_id, epoch, n_iter):
         matching(pose['meta']['bbox_center'][i].cpu(),
                  simcc['meta']['center'][i].cpu(),
                  f"meta.center,i={i}")
-        matching(pose['meta']['bbox_scale'][i].cpu() / 200,  # 200: pixel std of SimCC code
+        matching(pose['meta']['bbox_scale'][i].cpu(),
                  simcc['meta']['scale'][i].cpu(),
                  f"meta.scale,i={i}")
         matching(pose['meta']['keypoints'][i].cpu(),
@@ -88,8 +88,10 @@ def verify_batch_data(image_id, epoch, n_iter):
     else:
         logger.info(f"[loss] exact mathcing pass - pose({pose['loss']}) simcc({simcc['loss']})")
 
-    print("trans(pose):", pose['meta']['trans'][0])
-    print("trans(simc):", simcc['meta']['trans'][0])
+    print("pose:", pose['target_y'][0])
+    print("simc:", simcc['target_y'][0])
+    print("pose - simc:", pose['target_y'][0] - simcc['target_y'][0])
+    print("abs(pose - simc):", (pose['target_y'][0] - simcc['target_y'][0]).abs().sum())
 
     import pdb
     pdb.set_trace()

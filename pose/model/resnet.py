@@ -168,25 +168,16 @@ class PoseResNet(nn.Module):
 
     def forward(self, x):
         x = self.conv1(x)
-        conv1 = x.clone()
         x = self.bn1(x)
-        bn1 = x.clone()
         x = self.relu(x)
-        relu1 = x.clone()
         x = self.maxpool(x)
-        maxpool1 = x.clone()
 
         x = self.layer1(x)
-        layer1 = x.clone()
         x = self.layer2(x)
-        layer2 = x.clone()
         x = self.layer3(x)
-        layer3 = x.clone()
         x = self.layer4(x)
-        layer4 = x.clone()
 
         x = self.final_layer(x)
-        final1 = x.clone()
         # b: batch size
         x = rearrange(x, 'b (k c) h w -> b k (c h w)',
                       k=self.num_kp, c=self.num_channel_per_kp)
@@ -194,11 +185,7 @@ class PoseResNet(nn.Module):
         pred_x = self.cc_head_x(x)
         pred_y = self.cc_head_y(x)
 
-        debug_info = {"conv1": conv1, "bn1": bn1, "relu1": relu1, "maxpool1": maxpool1,
-                      "layer1": layer1, "layer2": layer2, "layer3": layer3, "layer4": layer4,
-                      "final1": final1, "final2": x}
-
-        return pred_x, pred_y, debug_info
+        return pred_x, pred_y
 
     def init_weights(self) -> None:
         logger.info("Init weights from normal distribution.")

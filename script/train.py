@@ -127,11 +127,13 @@ def train(config_fname: str) -> None:
         optimizer, cfg.TRAIN.LR_STEP, cfg.TRAIN.LR_FACTOR, last_epoch=-1
     )
 
-    logging_fname = f"perf_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.log"
-    logger.info(f"performance logging file name: {logging_fname}")
-    with open(logging_fname, 'w') as fout:
-        fout.write("| ep | AP | AP.5 | AP.75 | AR | Train | Val |\n")
-        fout.write("| --- | --- | --- | --- | --- | --- | --- |\n")
+    logging_performance = True if cfg.DEBUG.DEBUG_MODE else False
+    if logging_performance:
+        logging_fname = f"perf_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.log"
+        logger.info(f"performance logging file name: {logging_fname}")
+        with open(logging_fname, 'w') as fout:
+            fout.write("| ep | AP | AP.5 | AP.75 | AR | Train | Val |\n")
+            fout.write("| --- | --- | --- | --- | --- | --- | --- |\n")
 
     checkpoint_dir = "checkpoints"
     pathlib.Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
@@ -165,13 +167,14 @@ def train(config_fname: str) -> None:
                                               criterion=criterion,
                                               epoch=epoch)
 
-        with open(logging_fname, 'a') as fout:
-            _vals = [f"{epoch}"]
-            for _m in ['AP', 'AP .5', 'AP .75', 'AR']:
-                _vals.append(f"{eval_stats[_m]:.4f}")
-            _vals.append(f"{train_loss:.6f}")
-            _vals.append(f"{val_loss:.6f}")
-            fout.write("| " + " | ".join(_vals) + " |\n")
+        if logging_performance:
+            with open(logging_fname, 'a') as fout:
+                _vals = [f"{epoch}"]
+                for _m in ['AP', 'AP .5', 'AP .75', 'AR']:
+                    _vals.append(f"{eval_stats[_m]:.4f}")
+                _vals.append(f"{train_loss:.6f}")
+                _vals.append(f"{val_loss:.6f}")
+                fout.write("| " + " | ".join(_vals) + " |\n")
 
         if eval_stats['AP'] > best_ap:
             best_ap = eval_stats['AP']

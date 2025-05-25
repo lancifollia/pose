@@ -15,7 +15,7 @@ def get_affine_transform(bbox_center: npt.NDArray,
     Since cv2.getAffineTransform() uses (x,y) coordinates,
     so this function uses (x,y) coordinates.
     """
-    src_w = bbox_scale[0]
+    src_w = bbox_scale[0] * 200
 
     dst_w, dst_h = out_size_wh
 
@@ -38,6 +38,22 @@ def get_affine_transform(bbox_center: npt.NDArray,
         trans = cv2.getAffineTransform(dst, src)
     else:
         trans = cv2.getAffineTransform(src, dst)
+
+    """
+    d = {"center": bbox_center, "scale": bbox_scale,
+         "rot": rotate, "output_size": out_size_wh,
+         "src_w": src_w, "dst_w": dst_w, "dst_h": dst_h,
+         "rot_rad": rotate_rad,
+         "src_dir": src_dir, "dst_dir": dst_dir,
+         "src": src, "dst": dst,
+         "trans": trans
+        }
+    fpath = "debug/pose_trans.pkl"
+    import pickle
+    with open(fpath, "wb") as fout:
+        pickle.dump(d, fout, pickle.HIGHEST_PROTOCOL)
+    print(f"Save trans data: {fpath}")
+    """
 
     return trans
 
@@ -63,9 +79,28 @@ def get_affine_triangle_3rd_point(catheti: npt.NDArray,
 
 
 def transform_bbox_pred_to_image_pred(kp: torch.Tensor,           # (17,2(=x,y))
-                                      real_bbox: list[float],     # (x,y,w,h)
+                                      center: npt.NDArray,
+                                      scale: npt.NDArray,
                                       pred_bbox_size: list[float] # (w,h)
                                       ) -> torch.Tensor:
+    ret = np.zeros(kp.shape)
+    trans = get_affine_transform(bbox_center=center,
+                                 bbox_scale=scale,
+                                 rotate=0.0,
+                                 out_size_wh=pred_bbox_size,
+                                 inverse=True)
+    for p in range(kp.shape[0]):
+        pt = kp[p]
+        new_pt = np.array([pt[0], pt[1], 1.]).T
+        new_pt = np.dot(trans, new_pt)
+        ret[p] = new_pt
+    return torch.from_numpy(ret)
+
+
+def transform_bbox_pred_to_image_pred_backup(kp: torch.Tensor,           # (17,2(=x,y))
+                                             real_bbox: list[float],     # (x,y,w,h)
+                                             pred_bbox_size: list[float] # (w,h)
+                                             ) -> torch.Tensor:
     ret = torch.zeros_like(kp)
     rx, ry, rw, rh = real_bbox
     pw, ph = pred_bbox_size

@@ -97,7 +97,7 @@ class CocoDataset(Dataset):
         else:
             self.target_image_ids = self.coco.getImgIds()
         self.num_images = len(self.target_image_ids)
-        logger.info(f"number of target images: {self.num_images} (is_train: {self.is_train})")
+        logger.info(f"number of target images: {self.num_images:,} (is_train: {self.is_train})")
 
         self.num_keypoints = 17
         kp_labels = ['nose', 'L-eye', 'R-eye', 'L-ear', 'R-ear',
@@ -112,7 +112,7 @@ class CocoDataset(Dataset):
                          [0, 1], [0, 2], [1, 3], [2, 4], [3, 5], [4, 6]]
 
         self._dataset = self._load_coco_keypoint_annotations()
-        logger.info(f"Load {len(self._dataset):,} samples")
+        logger.info(f"Load {len(self._dataset):,} annotations")
 
     def __len__(self) -> int:
         return len(self._dataset)
@@ -161,6 +161,12 @@ class CocoDataset(Dataset):
             if cls != 1:  # cls:1 => person
                 continue
 
+            # anno_id filter
+            # if obj['id'] != 1202318:
+            #     continue
+            # if self.is_train and image_id not in [184613, 522418, 554625]:
+            #     continue
+
             # ignore objects without keypoints annotation
             if max(obj['keypoints']) == 0:
                 continue
@@ -186,7 +192,7 @@ class CocoDataset(Dataset):
         elif w < self.aspect_ratio * h:
             w = h * self.aspect_ratio
         sf = self.bbox_scale_factor
-        scale = np.array([w * sf, h * sf], dtype=np.float32)
+        scale = np.array([w * sf, h * sf], dtype=np.float32) / 200
         return center, scale
 
     def get_item(self,
@@ -231,16 +237,18 @@ class CocoDataset(Dataset):
         target_x, target_y, target_weight = self._generate_simcc_label(keypoints)
         meta = {"image_id": torch.tensor(sample.image_id).type(torch.long),
                 "anno_id": torch.tensor(sample.anno_id).type(torch.long),
-                "bbox_center": bbox_center,
-                "bbox_scale": bbox_scale,
-                "keypoints": keypoints.get_kps(),
-                "vis": keypoints.get_vis(),
-                "image_np": image_numpy,
-                "trans": trans,
-                "input_phase1": input_phase1
+                "bbox_center": torch.from_numpy(bbox_center),
+                "bbox_scale": torch.from_numpy(bbox_scale),
+                "keypoints": torch.from_numpy(keypoints.get_kps()),
+                "vis": torch.from_numpy(keypoints.get_vis()),
                 }
 
         if self.is_debug:
+            # It may cause a pytorch negative stride error.
+            meta["image_np"] = torch.from_numpy(image_numpy)
+            meta["trans"] = torch.from_numpy(trans)
+            meta["input_phase1"] = torch.from_numpy(input_phase1)
+
             probe = {"image_numpy": image_numpy,
                      "origin_kps": keypoints.get_kps(), "origin_vis": keypoints.get_vis(),
                      "rotate": rotate, "scale": scale,
@@ -289,11 +297,11 @@ class CocoDataset(Dataset):
             kx, ky = keypoints.get_kp(kp_idx)
 
             # Check that any part of the gaussian is in-bounds
-            ulx = kx - buffer
-            uly = ky - buffer
-            brx = kx + buffer + 1
-            bry = ky + buffer + 1
-            if ulx < 0 or uly < 0 or brx > w or bry > h:
+            ulx = int(kx - buffer)
+            uly = int(ky - buffer)
+            brx = int(kx + buffer + 1)
+            bry = int(ky + buffer + 1)
+            if ulx >= w or uly >= h or brx < 0 or bry < 0:
                 target_weight[kp_idx] = 0.0
 
             if target_weight[kp_idx] < 0.5:
@@ -304,9 +312,9 @@ class CocoDataset(Dataset):
             mu_y = ky * sf
             x = np.arange(0, int(w * sf), 1, dtype=np.float32)
             y = np.arange(0, int(h * sf), 1, dtype=np.float32)
-            denom = sigma * np.sqrt(np.pi * 2)
-            target_x[kp_idx] = (np.exp(- ((x - mu_x) ** 2) / (2 * sigma ** 2))) / denom
-            target_y[kp_idx] = (np.exp(- ((y - mu_y) ** 2) / (2 * sigma ** 2))) / denom
+            # denom = sigma * np.sqrt(np.pi * 2)
+            target_x[kp_idx] = (np.exp(- ((x - mu_x) ** 2) / (2 * sigma ** 2))) / (sigma * np.sqrt(np.pi * 2))
+            target_y[kp_idx] = (np.exp(- ((y - mu_y) ** 2) / (2 * sigma ** 2))) / (sigma * np.sqrt(np.pi * 2))
 
         return torch.from_numpy(target_x), torch.from_numpy(target_y), target_weight
 

@@ -70,14 +70,13 @@ def train_simcc(cfg: CfgNode,
         target_y = target_y.cuda(non_blocking=True)
         target_weight = target_weight.cuda(non_blocking=True).float()
 
-        output_x, output_y, forward_debug = model(input)
+        output_x, output_y = model(input)
         loss = criterion(output_x, output_y, target_x, target_y, target_weight)
 
         if is_debug:
             d = {"input": input, "meta": meta,
                  "target_x": target_x.cpu(), "target_y": target_y.cpu(),
                  "target_weight": target_weight.cpu(),
-                 "forward": forward_debug,
                  "output_x": output_x.cpu(), "output_y": output_y.cpu(),
                  "loss": loss.item()
                 }
@@ -147,12 +146,16 @@ def validate_simcc(cfg: CfgNode,
             kps = torch.zeros([input.size(0), num_kp, 2], dtype=torch.float32)  # 2: (x,y)
             kps[:,:,0] = torch.squeeze(torch.true_divide(preds_x, simcc_split_factor))
             kps[:,:,1] = torch.squeeze(torch.true_divide(preds_y, simcc_split_factor))
-            real_bboxes = meta["bbox"]
+            bbox_centers = meta["bbox_center"]
+            bbox_scales = meta["bbox_scale"]
             image_ids = meta["image_id"]
             for b_idx in range(input.size(0)):
                 image_id = int(image_ids[b_idx])
                 preds_per_image.setdefault(image_id, [])
-                final_pred = transform_bbox_pred_to_image_pred(kps[b_idx], real_bboxes[b_idx], pred_bbox_size_wh)
+                final_pred = transform_bbox_pred_to_image_pred(kps[b_idx],
+                                                               bbox_centers[b_idx].numpy(),
+                                                               bbox_scales[b_idx].numpy(),
+                                                               pred_bbox_size_wh)
                 preds_per_image[image_id].append(final_pred)
 
             if i % cfg.VALIDATE.LOGGING_FREQ == 0 or i == len(val_dataloader) - 1:
