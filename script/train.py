@@ -127,7 +127,7 @@ def train(config_fname: str) -> None:
         optimizer, cfg.TRAIN.LR_STEP, cfg.TRAIN.LR_FACTOR, last_epoch=-1
     )
 
-    logging_performance = True if cfg.DEBUG.DEBUG_MODE else False
+    logging_performance = False if cfg.DEBUG.DEBUG_MODE else True
     if logging_performance:
         logging_fname = f"perf_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.log"
         logger.info(f"performance logging file name: {logging_fname}")
@@ -135,8 +135,9 @@ def train(config_fname: str) -> None:
             fout.write("| ep | AP | AP.5 | AP.75 | AR | Train | Val |\n")
             fout.write("| --- | --- | --- | --- | --- | --- | --- |\n")
 
-    checkpoint_dir = "checkpoints"
-    pathlib.Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
+    if cfg.TRAIN.SAVE_CHECKPOINTS:
+        checkpoint_dir = "checkpoints"
+        pathlib.Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
     begin_epoch = 0
     best_ap = -1.0
@@ -180,15 +181,16 @@ def train(config_fname: str) -> None:
             best_ap = eval_stats['AP']
             logger.info(f"Best AP is updated! {eval_stats['AP']:.4f}")
 
-        checkpoint_fpath = os.path.join(checkpoint_dir, f"checkpoint_{epoch}.pth")
-        torch.save({
-            'epoch': epoch,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'loss': {'train': train_loss, 'val': val_loss},
-            'avg_precision': eval_stats['AP'],
-            'best_avg_precision': best_ap,
-        }, checkpoint_fpath)
+        if cfg.TRAIN.SAVE_CHECKPOINTS:
+            checkpoint_fpath = os.path.join(checkpoint_dir, f"checkpoint_{epoch}.pth")
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'loss': {'train': train_loss, 'val': val_loss},
+                'avg_precision': eval_stats['AP'],
+
+            }, checkpoint_fpath)
 
         logger.info(f"Epoch[{epoch}] complete. Elapsed at {(time.time() - start_ts)/60:.2f} mins")
 
