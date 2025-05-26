@@ -97,7 +97,9 @@ def verify_batch_data(image_id, epoch, n_iter):
     print("simc:", simcc['target_y'][0])
     print("pose - simc:", pose['target_y'][0] - simcc['target_y'][0])
     print("abs(pose - simc):", (pose['target_y'][0] - simcc['target_y'][0]).abs().sum())
+    '''
 
+    '''
     import pdb
     pdb.set_trace()
     print("debug")

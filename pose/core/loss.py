@@ -16,38 +16,39 @@ class KLDiscretLoss(nn.Module):
         else:
             self.reduction = reduction
 
-    def criterion(self, output: Tensor, target: Tensor) -> Tensor:
+    def criterion(self, pred: Tensor, target: Tensor) -> Tensor:
         """
         The target tensor is converted to log scale inside the kl_div_loss() method.
         See more: https://pytorch.org/docs/stable/generated/torch.nn.KLDivLoss.html
         """
-        scores = self.log_softmax(output)
+        scores = self.log_softmax(pred)
         loss = torch.mean(self.kl_div_loss(scores, target), dim=1)
         return loss
 
     def forward(self,
-                output_x: Tensor,
-                output_y: Tensor,
+                pred_x: Tensor,
+                pred_y: Tensor,
                 target_x: Tensor,
                 target_y: Tensor,
                 target_weight: Tensor
                 ) -> Tensor:
-        num_kp = output_x.shape[1]  # (b, k, (c h w))
+        num_kp = pred_x.shape[1]  # (b, k, (c h w))
         loss = torch.tensor(0.).cuda()
 
         for idx in range(num_kp):
-            _output_x = output_x[:,idx]
-            _output_y = output_y[:,idx]
-            _target_x = target_x[:,idx]
-            _target_y = target_y[:,idx]
+            _pred_x = pred_x[:,idx].squeeze()
+            _pred_y = pred_y[:,idx].squeeze()
+            _target_x = target_x[:,idx].squeeze()
+            _target_y = target_y[:,idx].squeeze()
             weight = target_weight[:,idx].squeeze()  # (b, k, 1) -> (b, k)
 
             if self.reduction == "mean":
-                loss += self.criterion(_output_x, _target_x).mul(weight).mean()
-                loss += self.criterion(_output_y, _target_y).mul(weight).mean()
+                loss_x = (self.criterion(_pred_x, _target_x).mul(weight).mean())
+                loss_y = (self.criterion(_pred_y, _target_y).mul(weight).mean())
+                loss = loss + loss_x + loss_y
             elif self.reduction == "weighted_mean":
-                loss += self.criterion(_output_x, _target_x).mul(weight).sum() * weight.sum()**-1
-                loss += self.criterion(_output_y, _target_y).mul(weight).sum() * weight.sum()**-1
+                loss += (self.criterion(_pred_x, _target_x).mul(weight).sum() * weight.sum()**-1)
+                loss += (self.criterion(_pred_y, _target_y).mul(weight).sum() * weight.sum()**-1)
             else:
                 raise RuntimeError(f"Invalid reduction type: {self.reduction}")
 

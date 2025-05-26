@@ -113,7 +113,7 @@ class PoseResNet(nn.Module):
         self.num_channel_per_kp = cfg.MODEL.EXTRA.NUM_CHANNEL_PER_KP
         self.final_conv_kernel_size = cfg.MODEL.EXTRA.FINAL_CONV_KERNEL_SIZE
         self.resolution_wh = Tensor(cfg.MODEL.INPUT_SIZE_WH).type(torch.int32)
-        self.cc_size_wh = self.resolution_wh * cfg.MODEL.EXTRA.SIMCC_SPLIT_FACTOR
+        self.cc_size_wh = self.resolution_wh * int(cfg.MODEL.EXTRA.SIMCC_SPLIT_FACTOR)
         logger.info(f"coordinate classification size: {self.cc_size_wh}")
 
         self.inplanes = 64

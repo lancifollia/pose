@@ -69,8 +69,8 @@ _C.MODEL.LOSS_TYPE = "KLDiscretLoss"
 _C.MODEL.EXTRA = CN()
 
 """ModelExtra > SimCC"""
-_C.MODEL.EXTRA.SIMCC_SPLIT_FACTOR = 2
-_C.MODEL.EXTRA.SIMCC_SIGMA = 1.0
+_C.MODEL.EXTRA.SIMCC_SPLIT_FACTOR = 2.0
+_C.MODEL.EXTRA.SIMCC_SIGMA = 1
 
 """Model.Extra > ResNet"""
 # ResNet layer spec: 18, 34, 50, 101, 152
