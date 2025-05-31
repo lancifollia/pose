@@ -140,7 +140,7 @@ if __name__ == "__main__":
     allclose_test_passed = True
     # for batch test
     for epoch in range(2):
-        for it in range(31):
+        for it in range(750):
             _exact_passed, _allclose_passed = verify_batch_data(image_id=None, epoch=epoch, n_iter=it, verbose=False)
             exact_test_passed = exact_test_passed and _exact_passed
             allclose_test_passed = allclose_test_passed and _allclose_passed

@@ -67,9 +67,8 @@ def dump_parameters(model: nn.Module, path: str) -> None:
         pickle.dump(params, fout, pickle.HIGHEST_PROTOCOL)
 
 
-def train(config_fname: str) -> None:
+def train(config_fname: str, mode: str) -> None:
     cfg = get_cfg_defaults()
-
     cfg.merge_from_file(config_fname)
     cfg.freeze()
     logger.info(f"Configurations:\n{cfg}")
@@ -121,87 +120,106 @@ def train(config_fname: str) -> None:
                                 pin_memory=cfg.DATA_LOADER.USE_PIN_MEMORY,
                                 )
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.TRAIN.LR)
-    logger.info(f"Optimizer:\n{optimizer}")
-    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(
-        optimizer, cfg.TRAIN.LR_STEP, cfg.TRAIN.LR_FACTOR, last_epoch=-1
-    )
+    if mode == "train":
+        optimizer = torch.optim.Adam(model.parameters(), lr=cfg.TRAIN.LR)
+        logger.info(f"Optimizer:\n{optimizer}")
+        lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(
+            optimizer, cfg.TRAIN.LR_STEP, cfg.TRAIN.LR_FACTOR, last_epoch=-1
+        )
 
-    logging_performance = cfg.TRAIN.LOGGING_EPOCH_PERF
-    if logging_performance:
-        logging_fname = f"perf_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.log"
-        logger.info(f"performance logging file name: {logging_fname}")
-        with open(logging_fname, 'w') as fout:
-            fout.write("| ep | AP | AP.5 | AP.75 | AR | Train | Val |\n")
-            fout.write("| --- | --- | --- | --- | --- | --- | --- |\n")
+        logging_performance = cfg.TRAIN.LOGGING_EPOCH_PERF
+        if logging_performance:
+            logging_fname = f"perf_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.log"
+            logger.info(f"performance logging file name: {logging_fname}")
+            with open(logging_fname, 'w') as fout:
+                fout.write("| ep | AP | AP.5 | AP.75 | AR | Train | Val |\n")
+                fout.write("| --- | --- | --- | --- | --- | --- | --- |\n")
 
-    if cfg.TRAIN.SAVE_CHECKPOINTS:
-        checkpoint_dir = "checkpoints"
-        pathlib.Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
+        if cfg.TRAIN.SAVE_CHECKPOINTS:
+            checkpoint_dir = "checkpoints"
+            pathlib.Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
-    begin_epoch = 0
-    best_ap = -1.0
+        begin_epoch = 0
+        best_ap = -1.0
+        for epoch in range(begin_epoch, cfg.TRAIN.END_EPOCH):
+            start_ts = time.time()
+            logger.info(f"{'=-'*5} Epoch[{epoch}] started {'-='*5}")
 
-    for epoch in range(begin_epoch, cfg.TRAIN.END_EPOCH):
-        start_ts = time.time()
-        logger.info(f"{'=-'*5} Epoch[{epoch}] started {'-='*5}")
+            train_loss = train_simcc(cfg=cfg,
+                                     tr_dataloader=tr_dataloader,
+                                     model=model,
+                                     criterion=criterion,
+                                     optimizer=optimizer,
+                                     epoch=epoch,
+                                     is_debug=cfg.TRAIN.DEBUG)
+            lr_scheduler.step()
 
-        train_loss = train_simcc(cfg=cfg,
-                                 tr_dataloader=tr_dataloader,
-                                 model=model,
-                                 criterion=criterion,
-                                 optimizer=optimizer,
-                                 epoch=epoch,
-                                 is_debug=cfg.TRAIN.DEBUG)
-        lr_scheduler.step()
+            if cfg.TRAIN.DEBUG:
+                fpath = f"debug/pose_epoch{epoch:03}_model.pt"
+                dump_parameters(model, fpath)
+                logger.warning(f"Trained model param dumped: {fpath}")
 
-        if cfg.TRAIN.DEBUG:
-            fpath = f"debug/pose_epoch{epoch:03}_model.pt"
-            dump_parameters(model, fpath)
-            logger.warning(f"Trained model param dumped: {fpath}")
+            eval_stats, val_loss = validate_simcc(cfg=cfg,
+                                                  val_dataloader=val_dataloader,
+                                                  val_dataset=val_dataset,
+                                                  model=model,
+                                                  criterion=criterion,
+                                                  epoch=epoch,
+                                                  is_debug=cfg.TRAIN.DEBUG
+                                                  )
+
+            if logging_performance:
+                with open(logging_fname, 'a') as fout:
+                    _vals = [f"{epoch}"]
+                    for _m in ['AP', 'AP .5', 'AP .75', 'AR']:
+                        _vals.append(f"{eval_stats[_m]:.4f}")
+                    _vals.append(f"{train_loss:.6f}")
+                    _vals.append(f"{val_loss:.6f}")
+                    fout.write("| " + " | ".join(_vals) + " |\n")
+
+            if eval_stats['AP'] > best_ap:
+                best_ap = eval_stats['AP']
+                logger.info(f"Best AP is updated! {eval_stats['AP']:.4f}")
+
+            if cfg.TRAIN.SAVE_CHECKPOINTS:
+                checkpoint_fpath = os.path.join(checkpoint_dir, f"checkpoint_{epoch}.pth")
+                torch.save({
+                    'epoch': epoch,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'loss': {'train': train_loss, 'val': val_loss},
+                    'avg_precision': eval_stats['AP'],
+                    'best_avg_precision': best_ap,
+                }, checkpoint_fpath)
+                logger.info(f"Save checkpoint parameters at: {checkpoint_fpath}")
+
+            logger.info(f"Epoch[{epoch}] complete. Elapsed at {(time.time() - start_ts)/60:.2f} mins")
+
+            if cfg.TRAIN.DEBUG and epoch == 1:
+                logger.info(f"debugging finished. epoch: {epoch}")
+                break
+
+        logger.info("Model training complete")
+    elif mode == "test":
+        logger.info(f"Load model from: {cfg.TEST.MODEL_PATH}")
+        model_data = torch.load(cfg.TEST.MODEL_PATH)
+        model.load_state_dict(model_data['model_state_dict'])
 
         eval_stats, val_loss = validate_simcc(cfg=cfg,
                                               val_dataloader=val_dataloader,
                                               val_dataset=val_dataset,
                                               model=model,
                                               criterion=criterion,
-                                              epoch=epoch,
-                                              is_debug=cfg.TRAIN.DEBUG
+                                              epoch=0,
+                                              is_debug=cfg.TEST.DEBUG
                                               )
-
-        if logging_performance:
-            with open(logging_fname, 'a') as fout:
-                _vals = [f"{epoch}"]
-                for _m in ['AP', 'AP .5', 'AP .75', 'AR']:
-                    _vals.append(f"{eval_stats[_m]:.4f}")
-                _vals.append(f"{train_loss:.6f}")
-                _vals.append(f"{val_loss:.6f}")
-                fout.write("| " + " | ".join(_vals) + " |\n")
-
-        if eval_stats['AP'] > best_ap:
-            best_ap = eval_stats['AP']
-            logger.info(f"Best AP is updated! {eval_stats['AP']:.4f}")
-
-        if cfg.TRAIN.SAVE_CHECKPOINTS:
-            checkpoint_fpath = os.path.join(checkpoint_dir, f"checkpoint_{epoch}.pth")
-            torch.save({
-                'epoch': epoch,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'loss': {'train': train_loss, 'val': val_loss},
-                'avg_precision': eval_stats['AP'],
-
-            }, checkpoint_fpath)
-
-        logger.info(f"Epoch[{epoch}] complete. Elapsed at {(time.time() - start_ts)/60:.2f} mins")
-
-        if cfg.TRAIN.DEBUG and epoch == 1:
-            logger.info(f"debugging finished. epoch: {epoch}")
-            break
-
-    logger.info('Model training is complete')
+        logger.info("Model testing complete")
+    else:
+        logger.error(f"Invalid script mode: {mode}")
 
 
 if __name__ == '__main__':
-    config_fname = sys.argv[1]
-    train(config_fname)
+    mode = sys.argv[1]
+    config_fname = sys.argv[2]
+    assert mode in ["train", "test"]
+    train(config_fname, mode)

@@ -91,6 +91,12 @@ _C.VALIDATE = CN()
 _C.VALIDATE.LOGGING_FREQ = 100
 
 
+"""Test"""
+_C.TEST = CN()
+_C.TEST.DEBUG = False
+_C.TEST.MODEL_PATH = ""
+
+
 def get_cfg_defaults():
     """Get a yacs CfgNode object with default values for my_project."""
     return _C.clone()
