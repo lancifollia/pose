@@ -22,7 +22,6 @@ def conv1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
     return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, padding=0, bias=False)
 
 
-
 class BasicBlock(nn.Module):
     expansion: int = 1
 
@@ -113,9 +112,9 @@ class PoseResNet(nn.Module):
         self.num_kp = cfg.DATA_COMMON.NUM_KEYPOINTS
         self.num_channel_per_kp = cfg.MODEL.EXTRA.NUM_CHANNEL_PER_KP
         self.final_conv_kernel_size = cfg.MODEL.EXTRA.FINAL_CONV_KERNEL_SIZE
-        self.resolution = Tensor(cfg.MODEL.INPUT_SIZE).type(torch.int32)
-        self.cc_size = self.resolution * cfg.MODEL.EXTRA.SIMCC_SPLIT_FACTOR
-        logger.info(f"coordinate classification size: {self.cc_size}")
+        self.resolution_wh = Tensor(cfg.MODEL.INPUT_SIZE_WH).type(torch.int32)
+        self.cc_size_wh = self.resolution_wh * int(cfg.MODEL.EXTRA.SIMCC_SPLIT_FACTOR)
+        logger.info(f"coordinate classification size: {self.cc_size_wh}")
 
         self.inplanes = 64
         self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
@@ -136,13 +135,15 @@ class PoseResNet(nn.Module):
         )
 
         total_stride = 2 ** 5
-        final_layer_resolution = (self.resolution / total_stride).type(torch.int32)
-        fh, fw = map(int, final_layer_resolution)
-        logger.info(f"final layer resolution: h({fh}) w({fw})")
-        head_in_size = int(fh * fw * self.num_channel_per_kp)
+        final_layer_resolution_wh = (self.resolution_wh / total_stride).type(torch.int32)
+        fw, fh = map(int, final_layer_resolution_wh)
+        logger.info(f"final layer resolution: w({fw}), h({fh})")
+        head_in_size = int(fw * fh * self.num_channel_per_kp)
         logger.info(f"head-in size: {head_in_size}")
-        self.cc_head_y = nn.Linear(head_in_size, self.cc_size[0])
-        self.cc_head_x = nn.Linear(head_in_size, self.cc_size[1])
+        self.cc_head_x = nn.Linear(head_in_size, self.cc_size_wh[0])
+        self.cc_head_y = nn.Linear(head_in_size, self.cc_size_wh[1])
+        logger.info(f"head x cc size: {self.cc_size_wh[0]}")
+        logger.info(f"head y cc shape: {self.cc_size_wh[1]}")
 
     def _make_layer(self,
                     block: Type[Union[BasicBlock, Bottleneck]],
@@ -181,9 +182,10 @@ class PoseResNet(nn.Module):
         x = rearrange(x, 'b (k c) h w -> b k (c h w)',
                       k=self.num_kp, c=self.num_channel_per_kp)
 
-        pred_y = self.cc_head_y(x)
         pred_x = self.cc_head_x(x)
-        return pred_y, pred_x
+        pred_y = self.cc_head_y(x)
+
+        return pred_x, pred_y
 
     def init_weights(self) -> None:
         logger.info("Init weights from normal distribution.")

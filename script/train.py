@@ -4,13 +4,17 @@ Training script
 import datetime
 import os
 import pathlib
+import pickle
+import random
 import sys
 import time
 
 import torch
+import numpy as np
 from loguru import logger
 from torch import nn
 from torch.utils.data import DataLoader
+from torchvision import transforms
 from torchvision.transforms import Compose, Normalize
 from yacs.config import CfgNode
 
@@ -20,7 +24,6 @@ from pose.config import get_cfg_defaults
 from pose.core.function import train_simcc, validate_simcc
 from pose.core.loss import KLDiscretLoss
 from pose.data.dataset import CocoDataset
-from pose.data.transforms import RescaleImgDiv255
 
 
 logger.remove()
@@ -31,7 +34,7 @@ def get_loss_function(loss_type: str) -> nn.Module:
     if loss_type == "KLDiscretLoss":
         return KLDiscretLoss()
     else:
-        msg = "Only the loss_type 'KLDiscrteLoss' is supported yet. " \
+        msg = "Only the loss_type 'KLDiscretLoss' is supported yet. " \
               f"Invalid loss type: {loss_type}"
         raise RuntimeError(msg)
 
@@ -46,8 +49,27 @@ def get_model(cfg: CfgNode, need_init_weights: bool) -> nn.Module:
         raise RuntimeError(msg)
 
 
+def set_random_seed(random_seed: int) -> None:
+    logger.info(f"Set random seed: {random_seed}")
+    torch.manual_seed(random_seed)
+    torch.cuda.manual_seed(random_seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    np.random.seed(random_seed)
+    random.seed(random_seed)
+
+
+def dump_parameters(model: nn.Module, path: str) -> None:
+    params = []
+    for p in model.parameters():
+        params.append(p)
+    with open(path, "wb") as fout:
+        pickle.dump(params, fout, pickle.HIGHEST_PROTOCOL)
+
+
 def train(config_fname: str) -> None:
     cfg = get_cfg_defaults()
+
     cfg.merge_from_file(config_fname)
     cfg.freeze()
     logger.info(f"Configurations:\n{cfg}")
@@ -55,8 +77,17 @@ def train(config_fname: str) -> None:
     torch.cuda.set_device("cuda:0")
 
     # Prepare model parameter
+    set_random_seed(42)
     model = get_model(cfg, need_init_weights=True).cuda()
-    logger.info(f"Model: {model}")
+
+    pathlib.Path("debug/").mkdir(parents=True, exist_ok=True)
+
+    if cfg.TRAIN.DEBUG:
+        fpath = 'debug/pose_init_model.pt'
+        dump_parameters(model, fpath)
+        logger.warning(f"Initial model parameter dumped: {fpath}")
+
+    # logger.info(f"Model: {model}")
     total_param_size = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logger.info(f"Model param size: {total_param_size:,}")
 
@@ -66,20 +97,20 @@ def train(config_fname: str) -> None:
 
     # Data loading
     input_transform = Compose([
-        RescaleImgDiv255(),
-        Normalize(mean=[0.406, 0.485, 0.456], # imagenet data normalization (RGB order)
-                  std=[0.225, 0.229, 0.224])
+        transforms.ToTensor(),
+        Normalize(mean=[0.485, 0.456, 0.406], # imagenet data normalization parameter
+                  std=[0.229, 0.224, 0.225])
     ])
     logger.info("Preapring training dataset")
-    tr_dataset = CocoDataset(cfg, is_train=True,
+    tr_dataset = CocoDataset(cfg, is_train=True, is_debug=cfg.TRAIN.DEBUG,
                              transform=input_transform)
     logger.info("Preparing validation dataset")
-    val_dataset = CocoDataset(cfg, is_train=False,
+    val_dataset = CocoDataset(cfg, is_train=False, is_debug=cfg.TRAIN.DEBUG,
                               transform=input_transform)
     logger.info("Preapring dataloader")
     tr_dataloader = DataLoader(tr_dataset,
                                batch_size=cfg.DATA_LOADER.BATCH_SIZE,
-                               shuffle=True,
+                               shuffle=cfg.DATA_LOADER.TRAIN_DATA_SHUFFLE,
                                num_workers=cfg.DATA_LOADER.NUM_WORKERS,
                                pin_memory=cfg.DATA_LOADER.USE_PIN_MEMORY,
                                )
@@ -96,14 +127,17 @@ def train(config_fname: str) -> None:
         optimizer, cfg.TRAIN.LR_STEP, cfg.TRAIN.LR_FACTOR, last_epoch=-1
     )
 
-    logging_fname = f"perf_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.log"
-    logger.info(f"performance logging file name: {logging_fname}")
-    with open(logging_fname, 'w') as fout:
-        fout.write("| ep | AP | AP.5 | AP.75 | AR | Train | Val |\n")
-        fout.write("| --- | --- | --- | --- | --- | --- | --- |\n")
+    logging_performance = cfg.TRAIN.LOGGING_EPOCH_PERF
+    if logging_performance:
+        logging_fname = f"perf_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.log"
+        logger.info(f"performance logging file name: {logging_fname}")
+        with open(logging_fname, 'w') as fout:
+            fout.write("| ep | AP | AP.5 | AP.75 | AR | Train | Val |\n")
+            fout.write("| --- | --- | --- | --- | --- | --- | --- |\n")
 
-    checkpoint_dir = "checkpoints"
-    pathlib.Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
+    if cfg.TRAIN.SAVE_CHECKPOINTS:
+        checkpoint_dir = "checkpoints"
+        pathlib.Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
     begin_epoch = 0
     best_ap = -1.0
@@ -112,38 +146,57 @@ def train(config_fname: str) -> None:
         start_ts = time.time()
         logger.info(f"{'=-'*5} Epoch[{epoch}] started {'-='*5}")
 
-        train_loss = train_simcc(cfg, tr_dataloader, model, criterion, optimizer, epoch)
+        train_loss = train_simcc(cfg=cfg,
+                                 tr_dataloader=tr_dataloader,
+                                 model=model,
+                                 criterion=criterion,
+                                 optimizer=optimizer,
+                                 epoch=epoch,
+                                 is_debug=cfg.TRAIN.DEBUG)
         lr_scheduler.step()
 
-        eval_stats, val_loss = validate_simcc(cfg, val_dataloader, val_dataset, model, criterion, epoch)
+        if cfg.TRAIN.DEBUG:
+            fpath = f"debug/pose_epoch{epoch:03}_model.pt"
+            dump_parameters(model, fpath)
+            logger.warning(f"Trained model param dumped: {fpath}")
+            exit(0)
 
-        with open(logging_fname, 'a') as fout:
-            _vals = [f"{epoch}"]
-            for _m in ['AP', 'AP .5', 'AP .75', 'AR']:
-                _vals.append(f"{eval_stats[_m]:.4f}")
-            _vals.append(f"{train_loss:.6f}")
-            _vals.append(f"{val_loss:.6f}")
-            fout.write("| " + " | ".join(_vals) + " |\n")
+        eval_stats, val_loss = validate_simcc(cfg=cfg,
+                                              val_dataloader=val_dataloader,
+                                              val_dataset=val_dataset,
+                                              model=model,
+                                              criterion=criterion,
+                                              epoch=epoch)
+
+        if logging_performance:
+            with open(logging_fname, 'a') as fout:
+                _vals = [f"{epoch}"]
+                for _m in ['AP', 'AP .5', 'AP .75', 'AR']:
+                    _vals.append(f"{eval_stats[_m]:.4f}")
+                _vals.append(f"{train_loss:.6f}")
+                _vals.append(f"{val_loss:.6f}")
+                fout.write("| " + " | ".join(_vals) + " |\n")
 
         if eval_stats['AP'] > best_ap:
             best_ap = eval_stats['AP']
             logger.info(f"Best AP is updated! {eval_stats['AP']:.4f}")
 
-        checkpoint_fpath = os.path.join(checkpoint_dir, "checkpoint_{epoch}.pth")
-        torch.save({
-            'epoch': epoch,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'loss': {'train': train_loss, 'val': val_loss},
-            'avg_precision': eval_stats['AP'],
-            'best_avg_precision': best_ap,
-        }, checkpoint_fpath)
+        if cfg.TRAIN.SAVE_CHECKPOINTS:
+            checkpoint_fpath = os.path.join(checkpoint_dir, f"checkpoint_{epoch}.pth")
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'loss': {'train': train_loss, 'val': val_loss},
+                'avg_precision': eval_stats['AP'],
+
+            }, checkpoint_fpath)
 
         logger.info(f"Epoch[{epoch}] complete. Elapsed at {(time.time() - start_ts)/60:.2f} mins")
 
     logger.info('Model training is complete')
 
 
-
 if __name__ == '__main__':
-    train(sys.argv[1])
+    config_fname = sys.argv[1]
+    train(config_fname)

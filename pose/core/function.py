@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+import pickle
 import time
 from collections import OrderedDict
+from typing import Any
 
 import torch
 from loguru import logger
@@ -30,12 +32,23 @@ class AverageMeter(object):
         self.avg = self.cum_val / self.count if self.count != 0 else 0
 
 
+def save_debug_info(debug_info: Any,
+                    epoch: int,
+                    n_iter: int
+                    ) -> None:
+    fpath = f"debug/pose_batch_data_epoch{epoch:03}_iter{n_iter:03}.pkl"
+    with open(fpath, "wb") as fout:
+        pickle.dump(debug_info, fout, pickle.HIGHEST_PROTOCOL)
+    logger.info(f"Save batch debugging data: {fpath}")
+
+
 def train_simcc(cfg: CfgNode,
                 tr_dataloader: DataLoader,
                 model: nn.Module,
                 criterion: nn.Module,
                 optimizer: optim.Optimizer,
-                epoch: int
+                epoch: int,
+                is_debug: bool = False
                 ) -> float:
 
     data_time = AverageMeter()
@@ -46,22 +59,32 @@ def train_simcc(cfg: CfgNode,
     model.train()
 
     start_ts = time.time()
-    for i, (input, target_y, target_x, target_weight, meta) in enumerate(tr_dataloader):
+    for i, (input, target_x, target_y, target_weight, meta) in enumerate(tr_dataloader):
         # measure data loading time
         data_time.update(time.time() - start_ts)
 
+        if type(input) is not torch.Tensor:
+            input = torch.tensor(input, dtype=torch.float32)
         input = input.cuda(non_blocking=True)
-        target_y = target_y.cuda(non_blocking=True)
         target_x = target_x.cuda(non_blocking=True)
+        target_y = target_y.cuda(non_blocking=True)
         target_weight = target_weight.cuda(non_blocking=True).float()
 
-        output_y, output_x = model(input)
+        output_x, output_y = model(input)
+        loss = criterion(output_x, output_y, target_x, target_y, target_weight)
 
-        loss = criterion(output_y, output_x, target_y, target_x, target_weight)
+        if is_debug:
+            d = {"input": input, "meta": meta,
+                 "target_x": target_x.cpu(), "target_y": target_y.cpu(),
+                 "target_weight": target_weight.cpu(),
+                 "output_x": output_x.cpu(), "output_y": output_y.cpu(),
+                 "loss": loss.item()
+                }
+            save_debug_info(d, epoch, i)
 
+        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        optimizer.zero_grad()
 
         losses.update(loss.item(), input.size(0))
         batch_time.update(time.time() - start_ts)
@@ -87,7 +110,7 @@ def validate_simcc(cfg: CfgNode,
     batch_time = AverageMeter()
     losses = AverageMeter()
 
-    pred_bbox_size = cfg.MODEL.INPUT_SIZE
+    pred_bbox_size_wh = cfg.MODEL.INPUT_SIZE_WH
     num_kp = cfg.DATA_COMMON.NUM_KEYPOINTS
     simcc_split_factor = cfg.MODEL.EXTRA.SIMCC_SPLIT_FACTOR
 
@@ -97,35 +120,42 @@ def validate_simcc(cfg: CfgNode,
 
     with torch.no_grad():
         start_ts = time.time()
-        for i, (input, target_y, target_x, target_weight, meta) in enumerate(val_dataloader):
+        for i, (input, target_x, target_y, target_weight, meta) in enumerate(val_dataloader):
+            if type(input) is not torch.Tensor:
+                input = torch.tensor(input, dtype=torch.float32)
+
             input = input.cuda(non_blocking=True)
-            target_y = target_y.cuda(non_blocking=True)
             target_x = target_x.cuda(non_blocking=True)
+            target_y = target_y.cuda(non_blocking=True)
             target_weight = target_weight.cuda(non_blocking=True).float()
 
-            output_y, output_x = model(input)
+            output_x, output_y = model(input)
 
-            loss = criterion(output_y, output_x, target_y, target_x, target_weight)
+            loss = criterion(output_x, output_y, target_x, target_y, target_weight)
 
             losses.update(loss.item(), input.size(0))
             batch_time.update(time.time() - start_ts)
 
-            output_y = nn.functional.softmax(output_y, dim=2)  # (b, k, logits)
             output_x = nn.functional.softmax(output_x, dim=2)  # (b, k, logits)
+            output_y = nn.functional.softmax(output_y, dim=2)  # (b, k, logits)
 
             # TODO: need to implement confidence based cutoff
-            _, preds_y = output_y.max(2, keepdim=True)
             _, preds_x = output_x.max(2, keepdim=True)
+            _, preds_y = output_y.max(2, keepdim=True)
 
-            kps = torch.zeros([input.size(0), num_kp, 2], dtype=torch.float32)  # 2: (y,x)
-            kps[:,:,0] = torch.squeeze(torch.true_divide(preds_y, simcc_split_factor))
-            kps[:,:,1] = torch.squeeze(torch.true_divide(preds_x, simcc_split_factor))
-            real_bboxes = meta["bbox"]
+            kps = torch.zeros([input.size(0), num_kp, 2], dtype=torch.float32)  # 2: (x,y)
+            kps[:,:,0] = torch.squeeze(torch.true_divide(preds_x, simcc_split_factor))
+            kps[:,:,1] = torch.squeeze(torch.true_divide(preds_y, simcc_split_factor))
+            bbox_centers = meta["bbox_center"]
+            bbox_scales = meta["bbox_scale"]
             image_ids = meta["image_id"]
             for b_idx in range(input.size(0)):
                 image_id = int(image_ids[b_idx])
                 preds_per_image.setdefault(image_id, [])
-                final_pred = transform_bbox_pred_to_image_pred(kps[b_idx], real_bboxes[b_idx], pred_bbox_size)
+                final_pred = transform_bbox_pred_to_image_pred(kps[b_idx],
+                                                               bbox_centers[b_idx].numpy(),
+                                                               bbox_scales[b_idx].numpy(),
+                                                               pred_bbox_size_wh)
                 preds_per_image[image_id].append(final_pred)
 
             if i % cfg.VALIDATE.LOGGING_FREQ == 0 or i == len(val_dataloader) - 1:
