@@ -5,16 +5,10 @@ from torch import nn, Tensor
 
 
 class KLDiscretLoss(nn.Module):
-    def __init__(self, reduction: str = "mean") -> None:
+    def __init__(self) -> None:
         super(KLDiscretLoss, self).__init__()
         self.log_softmax = nn.LogSoftmax(dim=1)   # (b, logits)
         self.kl_div_loss= nn.KLDivLoss(reduction="none", log_target=False)
-        if reduction not in ["mean", "weighted_mean"]:
-            msg = "expected reduction to be one of 'mean', or 'weighted_mean' "\
-                  f"but found '{reduction}'"
-            raise RuntimeError(msg)
-        else:
-            self.reduction = reduction
 
     def criterion(self, pred: Tensor, target: Tensor) -> Tensor:
         """
@@ -36,20 +30,11 @@ class KLDiscretLoss(nn.Module):
         loss = torch.tensor(0.).cuda()
 
         for idx in range(num_kp):
-            _pred_x = pred_x[:,idx].squeeze()
-            _pred_y = pred_y[:,idx].squeeze()
-            _target_x = target_x[:,idx].squeeze()
-            _target_y = target_y[:,idx].squeeze()
+            _pred_x = pred_x[:,idx]
+            _pred_y = pred_y[:,idx]
+            _target_x = target_x[:,idx]
+            _target_y = target_y[:,idx]
             weight = target_weight[:,idx].squeeze()  # (b, k, 1) -> (b, k)
-
-            if self.reduction == "mean":
-                loss_x = (self.criterion(_pred_x, _target_x).mul(weight).mean())
-                loss_y = (self.criterion(_pred_y, _target_y).mul(weight).mean())
-                loss = loss + loss_x + loss_y
-            elif self.reduction == "weighted_mean":
-                loss += (self.criterion(_pred_x, _target_x).mul(weight).sum() * weight.sum()**-1)
-                loss += (self.criterion(_pred_y, _target_y).mul(weight).sum() * weight.sum()**-1)
-            else:
-                raise RuntimeError(f"Invalid reduction type: {self.reduction}")
-
+            loss += (self.criterion(_pred_x, _target_x).mul(weight).mean())
+            loss += (self.criterion(_pred_y, _target_y).mul(weight).mean())
         return loss / num_kp

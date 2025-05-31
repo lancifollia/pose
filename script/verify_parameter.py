@@ -43,10 +43,8 @@ verify_parameters(pose_fpath="debug/pose_init_model.pt",
                   category="init model"
                   )
 
-'''
 epoch = 0
 verify_parameters(pose_fpath=f"debug/pose_epoch{epoch:03}_model.pt",
                   simcc_fpath=f"debug/simcc_epoch{epoch:03}_model.pt",
                   category=f"epoch{epoch:03}"
                   )
-'''

@@ -82,7 +82,7 @@ def train(config_fname: str) -> None:
 
     pathlib.Path("debug/").mkdir(parents=True, exist_ok=True)
 
-    if cfg.DEBUG.INITED_MODEL_PARAM:
+    if cfg.TRAIN.DEBUG:
         fpath = 'debug/pose_init_model.pt'
         dump_parameters(model, fpath)
         logger.warning(f"Initial model parameter dumped: {fpath}")
@@ -102,10 +102,10 @@ def train(config_fname: str) -> None:
                   std=[0.229, 0.224, 0.225])
     ])
     logger.info("Preapring training dataset")
-    tr_dataset = CocoDataset(cfg, is_train=True, is_debug=cfg.DEBUG.TRAIN_DATA_SAMPLE,
+    tr_dataset = CocoDataset(cfg, is_train=True, is_debug=cfg.TRAIN.DEBUG,
                              transform=input_transform)
     logger.info("Preparing validation dataset")
-    val_dataset = CocoDataset(cfg, is_train=False, is_debug=cfg.DEBUG.VAL_DATA_SAMPLE,
+    val_dataset = CocoDataset(cfg, is_train=False, is_debug=cfg.TRAIN.DEBUG,
                               transform=input_transform)
     logger.info("Preapring dataloader")
     tr_dataloader = DataLoader(tr_dataset,
@@ -152,10 +152,10 @@ def train(config_fname: str) -> None:
                                  criterion=criterion,
                                  optimizer=optimizer,
                                  epoch=epoch,
-                                 is_debug=cfg.DEBUG.FORWARD)
+                                 is_debug=cfg.TRAIN.DEBUG)
         lr_scheduler.step()
 
-        if cfg.DEBUG.TRAINED_MODEL_PARAM:
+        if cfg.TRAIN.DEBUG:
             fpath = f"debug/pose_epoch{epoch:03}_model.pt"
             dump_parameters(model, fpath)
             logger.warning(f"Trained model param dumped: {fpath}")

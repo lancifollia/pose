@@ -20,15 +20,6 @@ _C.DATA_LOADER.NUM_WORKERS = 24
 _C.DATA_LOADER.TRAIN_DATA_SHUFFLE = True
 
 
-"""Debugging"""
-_C.DEBUG = CN()
-_C.DEBUG.INITED_MODEL_PARAM = False
-_C.DEBUG.TRAIN_DATA_SAMPLE = False
-_C.DEBUG.VAL_DATA_SAMPLE = False
-_C.DEBUG.FORWARD = False
-_C.DEBUG.TRAINED_MODEL_PARAM = False
-
-
 """Training Data"""
 _C.DATA_TRAIN = CN()
 _C.DATA_TRAIN.ANNOTATION_FNAME = "/home/dev/data/coco/annotations/person_keypoints_train2017.json"
@@ -81,6 +72,7 @@ _C.MODEL.EXTRA.FINAL_CONV_KERNEL_SIZE = 1
 
 """Training"""
 _C.TRAIN = CN()
+_C.TRAIN.DEBUG = False
 _C.TRAIN.GPU_ID = 1
 _C.TRAIN.LR = 0.001
 _C.TRAIN.LR_FACTOR = 0.1

@@ -244,8 +244,6 @@ class CocoDataset(Dataset):
                 }
 
         if self.is_debug:
-            # It may cause a pytorch negative stride error.
-            meta["image_np"] = torch.from_numpy(image_numpy)
             meta["trans"] = torch.from_numpy(trans)
             meta["input_phase1"] = torch.from_numpy(input_phase1)
 

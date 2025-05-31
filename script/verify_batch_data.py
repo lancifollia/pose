@@ -25,8 +25,9 @@ def matching(a, b, keyword):
 
 def verify_batch_data(image_id, epoch, n_iter):
     # pose_fpath = f"debug/{image_id}_pose_batch_data_epoch{epoch:03}_iter{n_iter:03}.pkl"
-    pose_fpath = f"debug/pose_batch_data_epoch{epoch:03}_iter{n_iter:03}.pkl"
-    simcc_fpath = f"debug/{image_id}_simcc_batch_data_epoch{epoch:03}_iter{n_iter:03}.pkl"
+    pose_fpath = f"debug/five_pose_batch_data_epoch{epoch:03}_iter{n_iter:03}.pkl"
+    # simcc_fpath = f"debug/{image_id}_simcc_batch_data_epoch{epoch:03}_iter{n_iter:03}.pkl"
+    simcc_fpath = f"debug/five_simcc_batch_data_epoch{epoch:03}_iter{n_iter:03}.pkl"
 
     with open(pose_fpath, "rb") as fin:
         pose = pickle.load(fin)
@@ -63,7 +64,7 @@ def verify_batch_data(image_id, epoch, n_iter):
         matching(pose['meta']['keypoints'][i].cpu(),
                  simcc['meta']['joints'][i,:,:2].cpu(),
                  f"meta.keypoints,i={i}")
-        # for key in ['image_np', 'trans', 'input_phase1']:
+        # for key in ['trans', 'input_phase1']:
         #     matching(pose['meta'][key][i].cpu(), simcc['meta'][key][i].cpu(), f"meta.{key},i={i}")
         for key in ['input', 'target_x', 'target_y', 'target_weight', 'output_x', 'output_y']:
             matching(pose[key][i].cpu(), simcc[key][i].cpu(), f"{key},i={i}")
@@ -107,8 +108,8 @@ def verify_batch_data(image_id, epoch, n_iter):
 
 
 if __name__ == "__main__":
-    image_ids = [318219]
-    # passed = [391895, 522418]
-    # failed = [184613]
-    # slightly diff = [318219, 554625]
-    verify_batch_data(image_ids[0], 0, 0)
+    image_ids = []
+    # passed = [184613, 391895, 522418, 318219, 554625]
+    # failed = []
+    # slightly diff = []
+    verify_batch_data('five', 0, 0)
