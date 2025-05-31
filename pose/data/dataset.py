@@ -341,13 +341,13 @@ class CocoDataset(Dataset):
 
         dump_dir = ".pred_dumps"
         Path(dump_dir).mkdir(parents=True, exist_ok=True)
-        pred_dump_fname = f"{dump_dir}/pred_dump_epoch{epoch}"
-        with open(pred_dump_fname, 'wb') as fout:
+        pred_dump_fpath = f"{dump_dir}/pred_dump_epoch{epoch}"
+        with open(pred_dump_fpath, 'wb') as fout:
             fout.write(json.dumps(pred_dump))
-        logger.info(f"Dumps validation data prediction results: {pred_dump_fname}")
+        logger.info(f"Dumps validation data prediction results: {pred_dump_fpath}")
         with redirect_stdout(None):  # mute the cocoapi internal print methods.
             coco_gt = COCO(self.anno_fname)
-            coco_dt = coco_gt.loadRes(pred_dump_fname)
+            coco_dt = coco_gt.loadRes(pred_dump_fpath)
             coco_eval = COCOeval(coco_gt, coco_dt, "keypoints")
             coco_eval.params.imgIds = list(eval_target_image_ids)
             coco_eval.evaluate()
@@ -360,7 +360,7 @@ class CocoDataset(Dataset):
         for i, name in enumerate(stats_names):
             eval_stats[name] = float(coco_eval.stats[i])
 
-        # if os.path.exists(pred_dump_fname):
-        #    os.remove(pred_dump_fname)
+        # if os.path.exists(pred_dump_fpath):
+        #    os.remove(pred_dump_fpath)
 
         return eval_stats

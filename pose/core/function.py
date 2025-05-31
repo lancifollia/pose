@@ -171,6 +171,9 @@ def validate_simcc(cfg: CfgNode,
             start_ts = time.time()
 
         logger.info(f"AP evaluation target images: {len(preds_per_image):,}")
+        num_target_annotations = sum([len(preds) for preds in preds_per_image.values()])
+        logger.info(f"AP evaluation target annotations: {num_target_annotations:,}")
+
         eval_stats = val_dataset.evaluate(preds_per_image, epoch)
 
         logger.info(", ".join(f"{_m}: {eval_stats[_m]:.4f}"
@@ -179,7 +182,10 @@ def validate_simcc(cfg: CfgNode,
                               for _m in ['AR', 'AR .5', 'AR .75', 'AR (M)', 'AR (L)']))
 
         if is_debug:
-            d = {"val_loss_mean": losses.avg, "eval_stats": eval_stats}
+            d = {"val_loss_mean": losses.avg,
+                 "eval_stats": eval_stats,
+                 "preds_per_image": preds_per_image
+                 }
             save_debug_info(d, "validation", epoch, 0)
 
         return eval_stats, losses.avg
