@@ -159,14 +159,15 @@ def train(config_fname: str) -> None:
             fpath = f"debug/pose_epoch{epoch:03}_model.pt"
             dump_parameters(model, fpath)
             logger.warning(f"Trained model param dumped: {fpath}")
-            exit(0)
 
         eval_stats, val_loss = validate_simcc(cfg=cfg,
                                               val_dataloader=val_dataloader,
                                               val_dataset=val_dataset,
                                               model=model,
                                               criterion=criterion,
-                                              epoch=epoch)
+                                              epoch=epoch,
+                                              is_debug=cfg.TRAIN.DEBUG
+                                              )
 
         if logging_performance:
             with open(logging_fname, 'a') as fout:
@@ -193,6 +194,10 @@ def train(config_fname: str) -> None:
             }, checkpoint_fpath)
 
         logger.info(f"Epoch[{epoch}] complete. Elapsed at {(time.time() - start_ts)/60:.2f} mins")
+
+        if cfg.TRAIN.DEBUG and epoch == 1:
+            logger.info(f"debugging finished. epoch: {epoch}")
+            break
 
     logger.info('Model training is complete')
 

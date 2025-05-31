@@ -33,13 +33,14 @@ class AverageMeter(object):
 
 
 def save_debug_info(debug_info: Any,
+                    keyword: str,
                     epoch: int,
                     n_iter: int
                     ) -> None:
-    fpath = f"debug/pose_batch_data_epoch{epoch:03}_iter{n_iter:03}.pkl"
+    fpath = f"debug/pose_{keyword}_epoch{epoch:03}_iter{n_iter:03}.pkl"
     with open(fpath, "wb") as fout:
         pickle.dump(debug_info, fout, pickle.HIGHEST_PROTOCOL)
-    logger.info(f"Save batch debugging data: {fpath}")
+    logger.info(f"Debugging data saved: {fpath}")
 
 
 def train_simcc(cfg: CfgNode,
@@ -80,7 +81,7 @@ def train_simcc(cfg: CfgNode,
                  "output_x": output_x.cpu(), "output_y": output_y.cpu(),
                  "loss": loss.item()
                 }
-            save_debug_info(d, epoch, i)
+            save_debug_info(d, "batch_data", epoch, i)
 
         optimizer.zero_grad()
         loss.backward()
@@ -96,6 +97,10 @@ def train_simcc(cfg: CfgNode,
                   f"Speed {input.shape[0] / batch_time.val:.2f} samples/sec"
             logger.info(msg)
 
+        if is_debug and i >= cfg.TRAIN.DEBUG_ITER:
+            logger.warning(f"Stop training (iteration exceeds DEBUG_ITER(={cfg.TRAIN.DEBUG_ITER}))")
+            break
+
     return losses.avg
 
 
@@ -104,7 +109,8 @@ def validate_simcc(cfg: CfgNode,
                    val_dataset: CocoDataset,
                    model: nn.Module,
                    criterion: nn.Module,
-                   epoch: int
+                   epoch: int,
+                   is_debug: bool = False
                    ) -> tuple[OrderedDict[str,float], float]:
 
     batch_time = AverageMeter()
@@ -171,5 +177,9 @@ def validate_simcc(cfg: CfgNode,
                               for _m in ['AP', 'AP .5', 'AP .75', 'AP (M)', 'AP (L)']))
         logger.info(", ".join(f"{_m}: {eval_stats[_m]:.4f}"
                               for _m in ['AR', 'AR .5', 'AR .75', 'AR (M)', 'AR (L)']))
+
+        if is_debug:
+            d = {"val_loss_mean": losses.avg, "eval_stats": eval_stats}
+            save_debug_info(d, "validation", epoch, 0)
 
         return eval_stats, losses.avg

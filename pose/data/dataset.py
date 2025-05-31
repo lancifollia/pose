@@ -91,7 +91,7 @@ class CocoDataset(Dataset):
         )
 
         # Load image file names (image_id: int)
-        if data_cfg.TARGET_IMAGES:
+        if data_cfg.USE_TARGET_IMAGES and len(data_cfg.TARGET_IMAGES) > 0:
             self.target_image_ids = data_cfg.TARGET_IMAGES
             logger.warning(f"Retrict target images(size: {len(self.target_image_ids):,}): {self.target_image_ids}")
         else:
