@@ -129,18 +129,17 @@ def validate_simcc(cfg: CfgNode,
         for i, (input, target_x, target_y, target_weight, meta) in enumerate(val_dataloader):
             if type(input) is not torch.Tensor:
                 input = torch.tensor(input, dtype=torch.float32)
-
             input = input.cuda(non_blocking=True)
             target_x = target_x.cuda(non_blocking=True)
             target_y = target_y.cuda(non_blocking=True)
             target_weight = target_weight.cuda(non_blocking=True).float()
 
             output_x, output_y = model(input)
-
             loss = criterion(output_x, output_y, target_x, target_y, target_weight)
 
             losses.update(loss.item(), input.size(0))
             batch_time.update(time.time() - start_ts)
+            start_ts = time.time()
 
             output_x = nn.functional.softmax(output_x, dim=2)  # (b, k, logits)
             output_y = nn.functional.softmax(output_y, dim=2)  # (b, k, logits)
@@ -168,7 +167,6 @@ def validate_simcc(cfg: CfgNode,
                 msg = f"Validation: [{i}/{len(val_dataloader) - 1}] " \
                       f"Loss {losses.val:.6f}({losses.avg:.6f})"
                 logger.info(msg)
-            start_ts = time.time()
 
         logger.info(f"AP evaluation target images: {len(preds_per_image):,}")
         num_target_annotations = sum([len(preds) for preds in preds_per_image.values()])
