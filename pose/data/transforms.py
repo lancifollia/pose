@@ -1,8 +1,31 @@
 #!/usr/bin/env python3
+
+from typing import List
+
 import cv2
 import numpy as np
 import numpy.typing as npt
 import torch
+
+
+def flip_back_simcc(output_flipped: npt.NDArray,
+                    flip_pairs: List[List[int]],
+                    axis: str
+                    ) -> npt.NDArray:
+    assert output_flipped.ndim == 3,\
+        "output_flipped should be [batch_size, num_keypoints, axis_resolution * simcc_scale_factor]"
+    assert axis in ["x", "y"]
+
+    if axis == "x":
+        output_flipped = output_flipped[:, :, ::-1]
+
+    for pair in flip_pairs:
+        tmp = output_flipped[:, pair[0], :].copy()
+        output_flipped[:, pair[0], :] = output_flipped[:, pair[1], :]
+        output_flipped[:, pair[1], :] = tmp
+
+    return output_flipped
+
 
 
 def get_affine_transform(bbox_center: npt.NDArray,
@@ -38,22 +61,6 @@ def get_affine_transform(bbox_center: npt.NDArray,
         trans = cv2.getAffineTransform(dst, src)
     else:
         trans = cv2.getAffineTransform(src, dst)
-
-    """
-    d = {"center": bbox_center, "scale": bbox_scale,
-         "rot": rotate, "output_size": out_size_wh,
-         "src_w": src_w, "dst_w": dst_w, "dst_h": dst_h,
-         "rot_rad": rotate_rad,
-         "src_dir": src_dir, "dst_dir": dst_dir,
-         "src": src, "dst": dst,
-         "trans": trans
-        }
-    fpath = "debug/pose_trans.pkl"
-    import pickle
-    with open(fpath, "wb") as fout:
-        pickle.dump(d, fout, pickle.HIGHEST_PROTOCOL)
-    print(f"Save trans data: {fpath}")
-    """
 
     return trans
 

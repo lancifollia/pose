@@ -100,19 +100,10 @@ def train(config_fname: str, mode: str) -> None:
         Normalize(mean=[0.485, 0.456, 0.406], # imagenet data normalization parameter
                   std=[0.229, 0.224, 0.225])
     ])
-    logger.info("Preapring training dataset")
-    tr_dataset = CocoDataset(cfg, is_train=True, is_debug=cfg.TRAIN.DEBUG,
-                             transform=input_transform)
-    logger.info("Preparing validation dataset")
+
+    logger.info("Preparing validation dataset & dataloader")
     val_dataset = CocoDataset(cfg, is_train=False, is_debug=cfg.TRAIN.DEBUG,
                               transform=input_transform)
-    logger.info("Preapring dataloader")
-    tr_dataloader = DataLoader(tr_dataset,
-                               batch_size=cfg.DATA_LOADER.BATCH_SIZE,
-                               shuffle=cfg.DATA_LOADER.TRAIN_DATA_SHUFFLE,
-                               num_workers=cfg.DATA_LOADER.NUM_WORKERS,
-                               pin_memory=cfg.DATA_LOADER.USE_PIN_MEMORY,
-                               )
     val_dataloader = DataLoader(val_dataset,
                                 batch_size=cfg.DATA_LOADER.BATCH_SIZE,
                                 shuffle=False,
@@ -121,6 +112,17 @@ def train(config_fname: str, mode: str) -> None:
                                 )
 
     if mode == "train":
+        logger.info("Preapring training dataset & dataloader")
+        tr_dataset = CocoDataset(cfg, is_train=True, is_debug=cfg.TRAIN.DEBUG,
+                                transform=input_transform)
+        logger.info("Preapring dataloader")
+        tr_dataloader = DataLoader(tr_dataset,
+                                batch_size=cfg.DATA_LOADER.BATCH_SIZE,
+                                shuffle=cfg.DATA_LOADER.TRAIN_DATA_SHUFFLE,
+                                num_workers=cfg.DATA_LOADER.NUM_WORKERS,
+                                pin_memory=cfg.DATA_LOADER.USE_PIN_MEMORY,
+                                )
+
         optimizer = torch.optim.Adam(model.parameters(), lr=cfg.TRAIN.LR)
         logger.info(f"Optimizer:\n{optimizer}")
         lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(
@@ -202,7 +204,7 @@ def train(config_fname: str, mode: str) -> None:
         logger.info("Model training complete")
     elif mode == "test":
         logger.info(f"Load model from: {cfg.TEST.MODEL_PATH}")
-        model_data = torch.load(cfg.TEST.MODEL_PATH)
+        model_data = torch.load(cfg.TEST.MODEL_PATH, weights_only=True)
         model.load_state_dict(model_data['model_state_dict'])
 
         eval_stats, val_loss = validate_simcc(cfg=cfg,

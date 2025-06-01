@@ -5,13 +5,14 @@ from collections import OrderedDict
 from typing import Any
 
 import torch
+import torch.nn.functional as F
 from loguru import logger
 from torch import optim, nn
 from torch.utils.data import DataLoader
 from yacs.config import CfgNode
 
 from pose.data.dataset import CocoDataset
-from pose.data.transforms import transform_bbox_pred_to_image_pred
+from pose.data.transforms import flip_back_simcc, transform_bbox_pred_to_image_pred
 
 
 class AverageMeter(object):
@@ -130,11 +131,31 @@ def validate_simcc(cfg: CfgNode,
             if type(input) is not torch.Tensor:
                 input = torch.tensor(input, dtype=torch.float32)
             input = input.cuda(non_blocking=True)
+
+            output_x, output_y = model(input)
+            if cfg.INFERENCE.USE_FLIP_AVG:
+                input_flipped = input.flip(3)  # input.shape: (Batch, Channel, Y, X)
+                output_x_flipped, output_y_flipped = model(input_flipped)
+                output_x_flip_back = flip_back_simcc(output_x_flipped.cpu().numpy(),
+                                                     val_dataset.flip_pairs, axis="x")
+                output_y_flip_back = flip_back_simcc(output_y_flipped.cpu().numpy(),
+                                                     val_dataset.flip_pairs, axis="y")
+                output_x_flip_back_pth = torch.from_numpy(output_x_flip_back.copy()).cuda()
+                output_y_flip_back_pth = torch.from_numpy(output_y_flip_back.copy()).cuda()
+
+                # feature is not aligned, shift flipped heatmap for higher accuracy
+                if cfg.INFERENCE.SHIFT_HEATMAP_DURING_FLIP_AVG:
+                    output_x_flip_back_pth[:, :, 0:-1] = output_x_flip_back_pth.clone()[:, :, 1:]
+                output_x = F.softmax((output_x + output_x_flip_back_pth) * 0.5, dim=2)
+                output_y = F.softmax((output_y + output_y_flip_back_pth) * 0.5, dim=2)
+            else:
+                output_x = F.softmax(output_x, dim=2)
+                output_y = F.softmax(output_y, dim=2)
+
             target_x = target_x.cuda(non_blocking=True)
             target_y = target_y.cuda(non_blocking=True)
             target_weight = target_weight.cuda(non_blocking=True).float()
 
-            output_x, output_y = model(input)
             loss = criterion(output_x, output_y, target_x, target_y, target_weight)
 
             losses.update(loss.item(), input.size(0))
