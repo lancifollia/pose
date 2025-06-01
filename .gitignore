@@ -1,0 +1,8 @@
+*.log
+
+.pred_dumps/
+checkpoints/
+data/
+debug/
+results/
+*__pycache__*
