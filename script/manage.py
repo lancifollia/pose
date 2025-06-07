@@ -81,7 +81,7 @@ def train(config_fname: str, mode: str) -> None:
 
     pathlib.Path("debug/").mkdir(parents=True, exist_ok=True)
 
-    if cfg.TRAIN.DEBUG:
+    if cfg.DEBUG.INIT_MODEL:
         fpath = 'debug/pose_init_model.pt'
         dump_parameters(model, fpath)
         logger.warning(f"Initial model parameter dumped: {fpath}")
@@ -102,7 +102,7 @@ def train(config_fname: str, mode: str) -> None:
     ])
 
     logger.info("Preparing validation dataset & dataloader")
-    val_dataset = CocoDataset(cfg, is_train=False, is_debug=cfg.TRAIN.DEBUG,
+    val_dataset = CocoDataset(cfg, is_train=False, is_debug=cfg.DEBUG.DATASET,
                               transform=input_transform)
     val_dataloader = DataLoader(val_dataset,
                                 batch_size=cfg.DATA_LOADER.BATCH_SIZE,
@@ -113,15 +113,15 @@ def train(config_fname: str, mode: str) -> None:
 
     if mode == "train":
         logger.info("Preapring training dataset & dataloader")
-        tr_dataset = CocoDataset(cfg, is_train=True, is_debug=cfg.TRAIN.DEBUG,
-                                transform=input_transform)
+        tr_dataset = CocoDataset(cfg, is_train=True, is_debug=cfg.DEBUG.DATASET,
+                                 transform=input_transform)
         logger.info("Preapring dataloader")
         tr_dataloader = DataLoader(tr_dataset,
-                                batch_size=cfg.DATA_LOADER.BATCH_SIZE,
-                                shuffle=cfg.DATA_LOADER.TRAIN_DATA_SHUFFLE,
-                                num_workers=cfg.DATA_LOADER.NUM_WORKERS,
-                                pin_memory=cfg.DATA_LOADER.USE_PIN_MEMORY,
-                                )
+                                   batch_size=cfg.DATA_LOADER.BATCH_SIZE,
+                                   shuffle=cfg.DATA_LOADER.TRAIN_DATA_SHUFFLE,
+                                   num_workers=cfg.DATA_LOADER.NUM_WORKERS,
+                                   pin_memory=cfg.DATA_LOADER.USE_PIN_MEMORY,
+                                   )
 
         optimizer = torch.optim.Adam(model.parameters(), lr=cfg.TRAIN.LR)
         logger.info(f"Optimizer:\n{optimizer}")
@@ -153,10 +153,10 @@ def train(config_fname: str, mode: str) -> None:
                                      criterion=criterion,
                                      optimizer=optimizer,
                                      epoch=epoch,
-                                     is_debug=cfg.TRAIN.DEBUG)
+                                     is_debug=cfg.DEBUG.TRAIN)
             lr_scheduler.step()
 
-            if cfg.TRAIN.DEBUG:
+            if cfg.DEBUG.TRAIN:
                 fpath = f"debug/pose_epoch{epoch:03}_model.pt"
                 dump_parameters(model, fpath)
                 logger.warning(f"Trained model param dumped: {fpath}")
@@ -167,7 +167,7 @@ def train(config_fname: str, mode: str) -> None:
                                                   model=model,
                                                   criterion=criterion,
                                                   epoch=epoch,
-                                                  is_debug=cfg.TRAIN.DEBUG
+                                                  is_debug=cfg.DEBUG.VAL
                                                   )
 
             if logging_performance:
@@ -197,8 +197,8 @@ def train(config_fname: str, mode: str) -> None:
 
             logger.info(f"Epoch[{epoch}] complete. Elapsed at {(time.time() - start_ts)/60:.2f} mins")
 
-            if cfg.TRAIN.DEBUG and epoch == 1:
-                logger.info(f"debugging finished. epoch: {epoch}")
+            if epoch == cfg.DEBUG.TRAIN_END_EPOCH:
+                logger.info(f"Debugging finished. epoch: {epoch}, debugging end epoch: {cfg.DEBUG.TRAIN_END_EPOCH}")
                 break
 
         logger.info("Model training complete")
@@ -213,7 +213,7 @@ def train(config_fname: str, mode: str) -> None:
                                               model=model,
                                               criterion=criterion,
                                               epoch=0,
-                                              is_debug=cfg.TEST.DEBUG
+                                              is_debug=cfg.DEBUG.VAL
                                               )
         logger.info("Model testing complete")
     else:

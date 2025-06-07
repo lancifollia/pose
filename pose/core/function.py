@@ -98,10 +98,6 @@ def train_simcc(cfg: CfgNode,
                   f"Speed {input.shape[0] / batch_time.val:.2f} samples/sec"
             logger.info(msg)
 
-        if is_debug and i >= cfg.TRAIN.DEBUG_ITER:
-            logger.warning(f"Stop training (iteration exceeds DEBUG_ITER(={cfg.TRAIN.DEBUG_ITER}))")
-            break
-
     return losses.avg
 
 
@@ -124,7 +120,9 @@ def validate_simcc(cfg: CfgNode,
     # switch to evaluation mode
     model.eval()
     preds_per_image: dict[int, list[torch.Tensor]] = {}
+    all_preds = []
 
+    base_idx = 0
     with torch.no_grad():
         start_ts = time.time()
         for i, (input, target_x, target_y, target_weight, meta) in enumerate(val_dataloader):
@@ -149,7 +147,7 @@ def validate_simcc(cfg: CfgNode,
                 output_x = F.softmax((output_x + output_x_flip_back_pth) * 0.5, dim=2)
                 output_y = F.softmax((output_y + output_y_flip_back_pth) * 0.5, dim=2)
             else:
-                output_x = F.softmax(output_x, dim=2)
+                output_x = F.softmax(output_x, dim=2)  # (b, k, logits)
                 output_y = F.softmax(output_y, dim=2)
 
             target_x = target_x.cuda(non_blocking=True)
@@ -161,9 +159,6 @@ def validate_simcc(cfg: CfgNode,
             losses.update(loss.item(), input.size(0))
             batch_time.update(time.time() - start_ts)
             start_ts = time.time()
-
-            output_x = nn.functional.softmax(output_x, dim=2)  # (b, k, logits)
-            output_y = nn.functional.softmax(output_y, dim=2)  # (b, k, logits)
 
             # TODO: need to implement confidence based cutoff
             _, preds_x = output_x.max(2, keepdim=True)
@@ -183,11 +178,20 @@ def validate_simcc(cfg: CfgNode,
                                                                bbox_scales[b_idx].numpy(),
                                                                pred_bbox_size_wh)
                 preds_per_image[image_id].append(final_pred)
+                pred = {"idx": base_idx + b_idx,
+                        "image_id": image_id,
+                        "bbox_center": bbox_centers[b_idx].numpy(),
+                        "bbox_scale": bbox_scales[b_idx].numpy(),
+                        "pred": final_pred,
+                        }
+                all_preds.append(pred)
 
             if i % cfg.VALIDATE.LOGGING_FREQ == 0 or i == len(val_dataloader) - 1:
                 msg = f"Validation: [{i}/{len(val_dataloader) - 1}] " \
                       f"Loss {losses.val:.6f}({losses.avg:.6f})"
                 logger.info(msg)
+
+            base_idx += input.size(0)
 
         logger.info(f"AP evaluation target images: {len(preds_per_image):,}")
         num_target_annotations = sum([len(preds) for preds in preds_per_image.values()])
@@ -203,7 +207,8 @@ def validate_simcc(cfg: CfgNode,
         if is_debug:
             d = {"val_loss_mean": losses.avg,
                  "eval_stats": eval_stats,
-                 "preds_per_image": preds_per_image
+                 "preds_per_image": preds_per_image,
+                 "all_preds": all_preds
                  }
             save_debug_info(d, "validation", epoch, 0)
 

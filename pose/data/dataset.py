@@ -350,7 +350,8 @@ class CocoDataset(Dataset):
             coco_gt = COCO(self.anno_fname)
             coco_dt = coco_gt.loadRes(pred_dump_fpath)
             coco_eval = COCOeval(coco_gt, coco_dt, "keypoints")
-            coco_eval.params.imgIds = list(eval_target_image_ids)
+            # coco_eval.params.imgIds = list(eval_target_image_ids)
+            coco_eval.params.useSegm = None
             coco_eval.evaluate()
             coco_eval.accumulate()
             coco_eval.summarize()
