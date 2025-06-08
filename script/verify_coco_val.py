@@ -11,6 +11,7 @@ from loguru import logger
 
 # parameters
 verbose = False
+# skip_image_ids = set([])
 skip_image_ids = set([43314, 459272])
 logger.info(f"skip image ids(size:{len(skip_image_ids)}): {skip_image_ids}")
 
@@ -20,6 +21,7 @@ Load allpred data
 """
 pose_ap_fpath = "debug/validation/pose_validation_epoch001_iter000.pkl"
 simcc_ap_fpath = "debug/validation/simcc_validation_epoch001_iter000.pkl"
+# simcc_ap_fpath = "debug/validation/simcc_validation_epoch001_iter000.pkl.no_nms"
 
 with open(pose_ap_fpath, "rb") as fin:
     _pose_ap_raw = pickle.load(fin)
@@ -64,6 +66,7 @@ Load coco dump data
 """
 pose_coco_fpath = "./debug/validation/pose_coco_dump_epoch1"
 simcc_coco_fpath = "./debug/validation/simcc_coco_dump_epoch1"
+# simcc_coco_fpath = "./debug/validation/simcc_coco_dump_epoch1.no_nms"
 
 with open(pose_coco_fpath, "rb") as fin:
     _pose_coco_raw = json.load(fin)
