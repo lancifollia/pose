@@ -237,7 +237,7 @@ class CocoDataset(Dataset):
                 "anno_id": torch.tensor(sample.anno_id).type(torch.long),
                 "bbox_center": torch.from_numpy(bbox_center),
                 "bbox_scale": torch.from_numpy(bbox_scale),
-                "bbox_score": torch.from_numpy(bbox_score),
+                "bbox_score": bbox_score,
                 "keypoints": torch.from_numpy(keypoints.get_kps()),
                 "vis": torch.from_numpy(keypoints.get_vis()),
                 }

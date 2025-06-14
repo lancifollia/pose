@@ -184,7 +184,7 @@ def validate_simcc(cfg: CfgNode,
                 pred = {"image_id": image_id,
                         "bbox_center": bbox_centers[b_idx].numpy(),
                         "bbox_scale": bbox_scales[b_idx].numpy(),
-                        "bbox_score": bbox_score[b_idx].numpy(),
+                        "bbox_score": bbox_score[b_idx].item(),
                         "kps": final_pred,
                         "kps_score": kps_score
                         }
