@@ -323,10 +323,8 @@ class CocoDataset(Dataset):
                  ) -> OrderedDict[str,float]:
         """Calculate average precision using ground truth bbox."""
         pred_dump = []
-        eval_target_image_ids = set()
 
         for image_id, preds in preds_per_image.items():
-            eval_target_image_ids.add(image_id)
             for pred in preds:
                 # (17,2) pred -> (17,3)
                 kp = torch.zeros(17, 3, dtype=torch.float32)
@@ -346,15 +344,14 @@ class CocoDataset(Dataset):
         with open(pred_dump_fpath, 'wb') as fout:
             fout.write(json.dumps(pred_dump))
         logger.info(f"Dumps validation data prediction results: {pred_dump_fpath}")
-        with redirect_stdout(None):  # mute the cocoapi internal print methods.
-            coco_gt = COCO(self.anno_fname)
-            coco_dt = coco_gt.loadRes(pred_dump_fpath)
-            coco_eval = COCOeval(coco_gt, coco_dt, "keypoints")
-            # coco_eval.params.imgIds = list(eval_target_image_ids)
-            coco_eval.params.useSegm = None
-            coco_eval.evaluate()
-            coco_eval.accumulate()
-            coco_eval.summarize()
+
+        coco_gt = COCO(self.anno_fname)
+        coco_dt = coco_gt.loadRes(pred_dump_fpath)
+        coco_eval = COCOeval(coco_gt, coco_dt, "keypoints")
+        coco_eval.params.useSegm = None
+        coco_eval.evaluate()
+        coco_eval.accumulate()
+        coco_eval.summarize()
 
         stats_names = ['AP', 'AP .5', 'AP .75', 'AP (M)', 'AP (L)',
                        'AR', 'AR .5', 'AR .75', 'AR (M)', 'AR (L)']
