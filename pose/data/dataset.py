@@ -48,7 +48,7 @@ class CocoDataset(Dataset):
         self.simcc_split_factor = cfg.MODEL.EXTRA.SIMCC_SPLIT_FACTOR
         self.simcc_sigma = cfg.MODEL.EXTRA.SIMCC_SIGMA
 
-        self.keypoint_accept_score = None
+        self.keypoint_accept_score = cfg.INFERENCE.VIS_THRESHOLD
 
         self.transform = transform
 
