@@ -9,7 +9,6 @@ _C = CN()
 """Data Common"""
 _C.DATA_COMMON = CN()
 _C.DATA_COMMON.NUM_KEYPOINTS = 17  # COCO dataset
-# Minimum required keypoints for training sample.
 
 
 """Data Loader"""
@@ -60,10 +59,17 @@ _C.DEBUG.TRAIN_END_EPOCH = -1
 _C.DEBUG.VAL = False
 
 
+"""Environment"""
+_C.ENV = CN()
+_C.ENV.DEVICE = "cuda:0"
+_C.ENV.RANDOM_SEED = 42
+
+
 """Inference"""
 _C.INFERENCE = CN()
 _C.INFERENCE.USE_FLIP_AVG = True
 _C.INFERENCE.SHIFT_HEATMAP_DURING_FLIP_AVG = True
+_C.INFERENCE.VIS_THRESHOLD = 0.0
 
 
 """Model"""
@@ -89,7 +95,6 @@ _C.MODEL.EXTRA.FINAL_CONV_KERNEL_SIZE = 1
 
 """Training"""
 _C.TRAIN = CN()
-_C.TRAIN.GPU_ID = 1
 _C.TRAIN.LR = 0.001
 _C.TRAIN.LR_FACTOR = 0.1
 _C.TRAIN.LR_STEP = [90, 120]

@@ -21,9 +21,6 @@ def coco_eval(pred_dump_fpath):
     coco_eval.accumulate()
     coco_eval.summarize()
 
-    # for i, s in enumerate(stats_names):
-    #     print(f"{s}: {coco_eval.stats[i]:.4f}")
-
 
 pred_fname = "debug/validation/simcc_coco_dump_epoch1"
 logger.info(f"pred file: {pred_fname}")
@@ -34,5 +31,9 @@ logger.info(f"pred file: {pred_fname}")
 coco_eval(pred_fname)
 
 pred_fname = "debug/validation/pose_coco_dump_epoch1"
+logger.info(f"pred file: {pred_fname}")
+coco_eval(pred_fname)
+
+pred_fname = "debug/validation/pose_coco_dump_epoch1.with_pred_score"
 logger.info(f"pred file: {pred_fname}")
 coco_eval(pred_fname)

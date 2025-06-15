@@ -5,10 +5,11 @@ from torch import nn, Tensor
 
 
 class KLDiscretLoss(nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, device: str) -> None:
         super(KLDiscretLoss, self).__init__()
-        self.log_softmax = nn.LogSoftmax(dim=1)   # (b, logits)
-        self.kl_div_loss= nn.KLDivLoss(reduction="none", log_target=False)
+        self.device = device
+        self.log_softmax = nn.LogSoftmax(dim=1).to(self.device)   # (b, logits)
+        self.kl_div_loss= nn.KLDivLoss(reduction="none", log_target=False).to(self.device)
 
     def criterion(self, pred: Tensor, target: Tensor) -> Tensor:
         """
@@ -27,7 +28,7 @@ class KLDiscretLoss(nn.Module):
                 target_weight: Tensor
                 ) -> Tensor:
         num_kp = pred_x.shape[1]  # (b, k, (c h w))
-        loss = torch.tensor(0.).cuda()
+        loss = torch.tensor(0.).to(self.device)
 
         for idx in range(num_kp):
             _pred_x = pred_x[:,idx]

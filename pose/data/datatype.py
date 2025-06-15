@@ -15,6 +15,7 @@ class DataSample(NamedTuple):
     image_fpath: str
     bbox_center: npt.NDArray
     bbox_scale: npt.NDArray
+    bbox_score: float
     keypoints: KeyPoints
 
 

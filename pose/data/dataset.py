@@ -4,9 +4,7 @@ Dataset modules
 
 import copy
 import os
-import pickle
 from collections import OrderedDict
-from contextlib import redirect_stdout
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -41,6 +39,7 @@ class CocoDataset(Dataset):
         logger.info(f"NN input size(width, height): {self.nn_input_size_wh}")
         self.aspect_ratio = self.nn_input_size_wh[0] * 1.0 / self.nn_input_size_wh[1]
         logger.info(f"Aspect ratio(=width/height): {self.aspect_ratio:.4f}")
+        self.pixel_std = 200
         self.bbox_scale_factor = 1.25
         logger.info(f"BBox scale factor: {self.bbox_scale_factor:.4f}")
 
@@ -48,6 +47,8 @@ class CocoDataset(Dataset):
 
         self.simcc_split_factor = cfg.MODEL.EXTRA.SIMCC_SPLIT_FACTOR
         self.simcc_sigma = cfg.MODEL.EXTRA.SIMCC_SIGMA
+
+        self.keypoint_accept_score = cfg.INFERENCE.VIS_THRESHOLD
 
         self.transform = transform
 
@@ -161,23 +162,17 @@ class CocoDataset(Dataset):
             cls = self.coco_ind_to_class_ind[obj['category_id']]
             if cls != 1:  # cls:1 => person
                 continue
-
-            # anno_id filter
-            # if obj['id'] != 1202318:
-            #    continue
-            # if self.is_train and image_id not in [184613, 522418, 554625]:
-            #     continue
-
             # ignore objects without keypoints annotation
             if max(obj['keypoints']) == 0:
                 continue
-
             kp = KeyPoints(anno=obj['keypoints'], data_format=self.data_format)
             bbox_center, bbox_scale = self.bbox_to_center_scale(*obj['clean_bbox'])
+            gt_bbox_score = 1.0
             ret.append(DataSample(image_id=image_id, anno_id=obj['id'],
                                   image_width=image_width, image_height=image_height,
                                   image_fpath=os.path.join(self.image_dir, image_meta['file_name']),
-                                  bbox_center=bbox_center, bbox_scale=bbox_scale, keypoints=kp
+                                  bbox_center=bbox_center, bbox_scale=bbox_scale, bbox_score=gt_bbox_score,
+                                  keypoints=kp
                                   ))
         return ret
 
@@ -185,15 +180,16 @@ class CocoDataset(Dataset):
                              ) -> Tuple[npt.NDArray, npt.NDArray]:
         center = np.zeros(2, dtype=np.float32)
         center[0] = x + w * 0.5
-
         center[1] = y + h * 0.5
 
         if w > self.aspect_ratio * h:
             h = w * 1.0 / self.aspect_ratio
         elif w < self.aspect_ratio * h:
             w = h * self.aspect_ratio
-        scale = np.array([w * 1.0 / 200, h * 1.0 / 200], dtype=np.float32)
+
+        scale = np.array([w * 1.0 / self.pixel_std, h * 1.0 / self.pixel_std], dtype=np.float32)
         scale = scale * self.bbox_scale_factor
+
         return center, scale
 
     def get_item(self,
@@ -214,6 +210,7 @@ class CocoDataset(Dataset):
 
         bbox_center = sample.bbox_center
         bbox_scale = sample.bbox_scale
+        bbox_score = sample.bbox_score
         keypoints = sample.keypoints
 
         if hflip is True:
@@ -240,6 +237,7 @@ class CocoDataset(Dataset):
                 "anno_id": torch.tensor(sample.anno_id).type(torch.long),
                 "bbox_center": torch.from_numpy(bbox_center),
                 "bbox_scale": torch.from_numpy(bbox_scale),
+                "bbox_score": bbox_score,
                 "keypoints": torch.from_numpy(keypoints.get_kps()),
                 "vis": torch.from_numpy(keypoints.get_vis()),
                 }
@@ -318,7 +316,7 @@ class CocoDataset(Dataset):
         return self._keypoints_idx2name[keypoint_idx]
 
     def evaluate(self,
-                 preds_per_image: dict[int, list[torch.Tensor]],
+                 preds_per_image: dict[int, dict[Any]],
                  epoch: int
                  ) -> OrderedDict[str,float]:
         """Calculate average precision using ground truth bbox."""
@@ -326,16 +324,25 @@ class CocoDataset(Dataset):
 
         for image_id, preds in preds_per_image.items():
             for pred in preds:
-                # (17,2) pred -> (17,3)
-                kp = torch.zeros(17, 3, dtype=torch.float32)
-                # cocoapi uses xy coordinates.
-                kp[:,0:2] = pred
-                # These are dummy visibility score. cocoapi evaluation ignores pred vis score.
-                kp[:,2] = (kp.sum(dim=1)>0).int()
+                # pred.keys: image_id, bbox_center, bbox_scale, bbox_score, kps, kps_score
+                kp = np.zeros((self.num_keypoints, 3), dtype=np.float32)  # 3: (x,y,score)
+                kp[:,0:2] = pred["kps"]
+                kp[:,2] = pred["kps_score"]
+
+                bbox_score = pred["bbox_score"]
+                kp_score = 0.0
+                num_valid_kps = 0
+                for kp_i in range(self.num_keypoints):
+                    if pred["kps_score"][kp_i] > self.keypoint_accept_score:
+                        kp_score += pred["kps_score"][kp_i]
+                        num_valid_kps += 1
+                if num_valid_kps > 0:
+                    kp_score = kp_score / num_valid_kps
                 v = {"image_id": image_id,
-                     "category_id": 1,     # category==1 -> person
-                     "score": 1.0,         # dummy value
-                     "keypoints": kp.flatten().tolist()}
+                     "category_id": 1,                 # category==1 -> person
+                     "score": float(bbox_score * kp_score),
+                     "keypoints": kp.flatten().tolist()
+                     }
                 pred_dump.append(v)
 
         dump_dir = ".pred_dumps"
@@ -358,8 +365,5 @@ class CocoDataset(Dataset):
         eval_stats = OrderedDict()
         for i, name in enumerate(stats_names):
             eval_stats[name] = float(coco_eval.stats[i])
-
-        # if os.path.exists(pred_dump_fpath):
-        #    os.remove(pred_dump_fpath)
 
         return eval_stats

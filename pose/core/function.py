@@ -67,10 +67,10 @@ def train_simcc(cfg: CfgNode,
 
         if type(input) is not torch.Tensor:
             input = torch.tensor(input, dtype=torch.float32)
-        input = input.cuda(non_blocking=True)
-        target_x = target_x.cuda(non_blocking=True)
-        target_y = target_y.cuda(non_blocking=True)
-        target_weight = target_weight.cuda(non_blocking=True).float()
+        input = input.to(cfg.ENV.DEVICE, non_blocking=True)
+        target_x = target_x.to(cfg.ENV.DEVICE, non_blocking=True)
+        target_y = target_y.to(cfg.ENV.DEVICE, non_blocking=True)
+        target_weight = target_weight.to(cfg.ENV.DEVICE, non_blocking=True)
 
         output_x, output_y = model(input)
         loss = criterion(output_x, output_y, target_x, target_y, target_weight)
@@ -120,7 +120,6 @@ def validate_simcc(cfg: CfgNode,
     # switch to evaluation mode
     model.eval()
     preds_per_image: dict[int, list[torch.Tensor]] = {}
-    all_preds = []
 
     base_idx = 0
     with torch.no_grad():
@@ -128,7 +127,7 @@ def validate_simcc(cfg: CfgNode,
         for i, (input, target_x, target_y, target_weight, meta) in enumerate(val_dataloader):
             if type(input) is not torch.Tensor:
                 input = torch.tensor(input, dtype=torch.float32)
-            input = input.cuda(non_blocking=True)
+            input = input.to(cfg.ENV.DEVICE, non_blocking=True)
 
             output_x, output_y = model(input)
             if cfg.INFERENCE.USE_FLIP_AVG:
@@ -138,8 +137,8 @@ def validate_simcc(cfg: CfgNode,
                                                      val_dataset.flip_pairs, axis="x")
                 output_y_flip_back = flip_back_simcc(output_y_flipped.cpu().numpy(),
                                                      val_dataset.flip_pairs, axis="y")
-                output_x_flip_back_pth = torch.from_numpy(output_x_flip_back.copy()).cuda()
-                output_y_flip_back_pth = torch.from_numpy(output_y_flip_back.copy()).cuda()
+                output_x_flip_back_pth = torch.from_numpy(output_x_flip_back.copy()).to(cfg.ENV.DEVICE)
+                output_y_flip_back_pth = torch.from_numpy(output_y_flip_back.copy()).to(cfg.ENV.DEVICE)
 
                 # feature is not aligned, shift flipped heatmap for higher accuracy
                 if cfg.INFERENCE.SHIFT_HEATMAP_DURING_FLIP_AVG:
@@ -150,9 +149,9 @@ def validate_simcc(cfg: CfgNode,
                 output_x = F.softmax(output_x, dim=2)  # (b, k, logits)
                 output_y = F.softmax(output_y, dim=2)
 
-            target_x = target_x.cuda(non_blocking=True)
-            target_y = target_y.cuda(non_blocking=True)
-            target_weight = target_weight.cuda(non_blocking=True).float()
+            target_x = target_x.to(cfg.ENV.DEVICE, non_blocking=True)
+            target_y = target_y.to(cfg.ENV.DEVICE, non_blocking=True)
+            target_weight = target_weight.to(cfg.ENV.DEVICE, non_blocking=True).float()
 
             loss = criterion(output_x, output_y, target_x, target_y, target_weight)
 
@@ -160,15 +159,20 @@ def validate_simcc(cfg: CfgNode,
             batch_time.update(time.time() - start_ts)
             start_ts = time.time()
 
-            # TODO: need to implement confidence based cutoff
-            _, preds_x = output_x.max(2, keepdim=True)
-            _, preds_y = output_y.max(2, keepdim=True)
+            max_val_x, preds_x = output_x.max(2, keepdim=True)
+            max_val_y, preds_y = output_y.max(2, keepdim=True)
+
+            # Set the keypoint prediction score to the lower of the scores for each coordinate.
+            mask_idx = max_val_x > max_val_y
+            max_val_x[mask_idx] = max_val_y[mask_idx]
+            kps_score = max_val_x.cpu()
 
             kps = torch.zeros([input.size(0), num_kp, 2], dtype=torch.float32)  # 2: (x,y)
             kps[:,:,0] = torch.squeeze(torch.true_divide(preds_x, simcc_split_factor))
             kps[:,:,1] = torch.squeeze(torch.true_divide(preds_y, simcc_split_factor))
             bbox_centers = meta["bbox_center"]
             bbox_scales = meta["bbox_scale"]
+            bbox_score = meta["bbox_score"]
             image_ids = meta["image_id"]
             for b_idx in range(input.size(0)):
                 image_id = int(image_ids[b_idx])
@@ -177,14 +181,14 @@ def validate_simcc(cfg: CfgNode,
                                                                bbox_centers[b_idx].numpy(),
                                                                bbox_scales[b_idx].numpy(),
                                                                pred_bbox_size_wh)
-                preds_per_image[image_id].append(final_pred)
-                pred = {"idx": base_idx + b_idx,
-                        "image_id": image_id,
+                pred = {"image_id": image_id,
                         "bbox_center": bbox_centers[b_idx].numpy(),
                         "bbox_scale": bbox_scales[b_idx].numpy(),
-                        "pred": final_pred,
+                        "bbox_score": bbox_score[b_idx].item(),
+                        "kps": final_pred,
+                        "kps_score": kps_score[b_idx].numpy().flatten()
                         }
-                all_preds.append(pred)
+                preds_per_image[image_id].append(pred)
 
             if i % cfg.VALIDATE.LOGGING_FREQ == 0 or i == len(val_dataloader) - 1:
                 msg = f"Validation: [{i}/{len(val_dataloader) - 1}] " \
@@ -208,7 +212,6 @@ def validate_simcc(cfg: CfgNode,
             d = {"val_loss_mean": losses.avg,
                  "eval_stats": eval_stats,
                  "preds_per_image": preds_per_image,
-                 "all_preds": all_preds
                  }
             save_debug_info(d, "validation", epoch, 0)
 

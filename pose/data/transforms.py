@@ -38,7 +38,7 @@ def get_affine_transform(bbox_center: npt.NDArray,
     Since cv2.getAffineTransform() uses (x,y) coordinates,
     so this function uses (x,y) coordinates.
     """
-    src_w = bbox_scale[0] * 200
+    src_w = bbox_scale[0] * 200   # pixel std
 
     dst_w, dst_h = out_size_wh
 

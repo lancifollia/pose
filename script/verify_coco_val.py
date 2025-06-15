@@ -4,7 +4,6 @@ import pickle
 from collections import defaultdict
 
 import numpy as np
-import torch
 import ujson as json
 from loguru import logger
 

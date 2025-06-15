@@ -3,6 +3,8 @@ DATA_LOADER:
   BATCH_SIZE: 200
   NUM_WORKERS: 1
   TRAIN_DATA_SHUFFLE: false
+DEBUG:
+  VAL: true
 MODEL:
   NAME: "resnet"
   EXTRA:
@@ -12,6 +14,6 @@ MODEL:
 INFERENCE:
   USE_FLIP_AVG: true
   SHIFT_HEATMAP_DURING_FLIP_AVG: true
+  VIS_THRESHOLD: 0.005
 TEST:
-  DEBUG: true
   MODEL_PATH: "/home/dev/pose/checkpoints/pose_fulliter_checkpoint_1.pth"
