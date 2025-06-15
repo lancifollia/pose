@@ -325,7 +325,7 @@ class CocoDataset(Dataset):
         for image_id, preds in preds_per_image.items():
             for pred in preds:
                 # pred.keys: image_id, bbox_center, bbox_scale, bbox_score, kps, kps_score
-                kp = torch.zeros(17, 3, dtype=torch.float32)  # 3: (x,y,score)
+                kp = np.zeros((self.num_keypoints, 3), dtype=np.float32)  # 3: (x,y,score)
                 kp[:,0:2] = pred["kps"]
                 kp[:,2] = pred["kps_score"]
 
@@ -340,7 +340,7 @@ class CocoDataset(Dataset):
                     kp_score = kp_score / num_valid_kps
                 v = {"image_id": image_id,
                      "category_id": 1,                 # category==1 -> person
-                     "score": bbox_score * kp_score,
+                     "score": float(bbox_score * kp_score),
                      "keypoints": kp.flatten().tolist()
                      }
                 pred_dump.append(v)

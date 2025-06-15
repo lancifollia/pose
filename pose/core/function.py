@@ -165,7 +165,7 @@ def validate_simcc(cfg: CfgNode,
             # Set the keypoint prediction score to the lower of the scores for each coordinate.
             mask_idx = max_val_x > max_val_y
             max_val_x[mask_idx] = max_val_y[mask_idx]
-            kps_score = max_val_x.cpu().numpy()
+            kps_score = max_val_x.cpu()
 
             kps = torch.zeros([input.size(0), num_kp, 2], dtype=torch.float32)  # 2: (x,y)
             kps[:,:,0] = torch.squeeze(torch.true_divide(preds_x, simcc_split_factor))
@@ -186,7 +186,7 @@ def validate_simcc(cfg: CfgNode,
                         "bbox_scale": bbox_scales[b_idx].numpy(),
                         "bbox_score": bbox_score[b_idx].item(),
                         "kps": final_pred,
-                        "kps_score": kps_score
+                        "kps_score": kps_score[b_idx].numpy().flatten()
                         }
                 preds_per_image[image_id].append(pred)
 
