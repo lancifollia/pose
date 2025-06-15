@@ -30,9 +30,9 @@ logger.remove()
 logger.add(sys.stderr, level="INFO")
 
 
-def get_loss_function(loss_type: str) -> nn.Module:
+def get_loss_function(loss_type: str, device: str) -> nn.Module:
     if loss_type == "KLDiscretLoss":
-        return KLDiscretLoss()
+        return KLDiscretLoss(device)
     else:
         msg = "Only the loss_type 'KLDiscretLoss' is supported yet. " \
               f"Invalid loss type: {loss_type}"
@@ -49,12 +49,15 @@ def get_model(cfg: CfgNode, need_init_weights: bool) -> nn.Module:
         raise RuntimeError(msg)
 
 
-def set_random_seed(random_seed: int) -> None:
+def set_random_seed(random_seed: int, device: str) -> None:
     logger.info(f"Set random seed: {random_seed}")
     torch.manual_seed(random_seed)
-    torch.cuda.manual_seed(random_seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    if "cuda" in device:
+        torch.cuda.manual_seed(random_seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+    else:
+        torch.manual_seed(random_seed)
     np.random.seed(random_seed)
     random.seed(random_seed)
 
@@ -73,11 +76,12 @@ def train(config_fname: str, mode: str) -> None:
     cfg.freeze()
     logger.info(f"Configurations:\n{cfg}")
 
-    torch.cuda.set_device("cuda:0")
+    if "cuda" in cfg.ENV.DEVICE:
+        torch.cuda.device(cfg.ENV.DEVICE)
 
     # Prepare model parameter
-    set_random_seed(42)
-    model = get_model(cfg, need_init_weights=True).cuda()
+    set_random_seed(cfg.ENV.RANDOM_SEED, cfg.ENV.DEVICE)
+    model = get_model(cfg, need_init_weights=True).to(cfg.ENV.DEVICE)
 
     pathlib.Path("debug/").mkdir(parents=True, exist_ok=True)
 
@@ -91,7 +95,7 @@ def train(config_fname: str, mode: str) -> None:
     logger.info(f"Model param size: {total_param_size:,}")
 
     # Set loss function
-    criterion = get_loss_function(cfg.MODEL.LOSS_TYPE).cuda()
+    criterion = get_loss_function(cfg.MODEL.LOSS_TYPE, cfg.ENV.DEVICE)
     logger.info(f"Loss type:\n{criterion}")
 
     # Data loading
@@ -204,7 +208,9 @@ def train(config_fname: str, mode: str) -> None:
         logger.info("Model training complete")
     elif mode == "test":
         logger.info(f"Load model from: {cfg.TEST.MODEL_PATH}")
-        model_data = torch.load(cfg.TEST.MODEL_PATH, weights_only=True)
+        model_data = torch.load(cfg.TEST.MODEL_PATH,
+                                weights_only=True,
+                                map_location=torch.device(cfg.ENV.DEVICE))
         model.load_state_dict(model_data['model_state_dict'])
 
         eval_stats, val_loss = validate_simcc(cfg=cfg,

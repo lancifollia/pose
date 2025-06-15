@@ -1,0 +1,21 @@
+---
+DATA_LOADER:
+  BATCH_SIZE: 200
+  NUM_WORKERS: 1
+  TRAIN_DATA_SHUFFLE: false
+DEBUG:
+  VAL: true
+ENV:
+  DEVICE: "cpu"
+MODEL:
+  NAME: "resnet"
+  EXTRA:
+    NUM_RESNET_LAYERS: 50
+    NUM_CHANNEL_PER_KP: 28
+    FINAL_CONV_KERNEL_SIZE: 1
+INFERENCE:
+  USE_FLIP_AVG: true
+  SHIFT_HEATMAP_DURING_FLIP_AVG: true
+  VIS_THRESHOLD: 0.005
+TEST:
+  MODEL_PATH: "/home/dev/pose/checkpoints/pose_fulliter_checkpoint_1.pth"

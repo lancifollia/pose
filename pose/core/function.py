@@ -67,10 +67,10 @@ def train_simcc(cfg: CfgNode,
 
         if type(input) is not torch.Tensor:
             input = torch.tensor(input, dtype=torch.float32)
-        input = input.cuda(non_blocking=True)
-        target_x = target_x.cuda(non_blocking=True)
-        target_y = target_y.cuda(non_blocking=True)
-        target_weight = target_weight.cuda(non_blocking=True).float()
+        input = input.to(cfg.ENV.DEVICE, non_blocking=True)
+        target_x = target_x.to(cfg.ENV.DEVICE, non_blocking=True)
+        target_y = target_y.to(cfg.ENV.DEVICE, non_blocking=True)
+        target_weight = target_weight.to(cfg.ENV.DEVICE, non_blocking=True)
 
         output_x, output_y = model(input)
         loss = criterion(output_x, output_y, target_x, target_y, target_weight)
@@ -127,7 +127,7 @@ def validate_simcc(cfg: CfgNode,
         for i, (input, target_x, target_y, target_weight, meta) in enumerate(val_dataloader):
             if type(input) is not torch.Tensor:
                 input = torch.tensor(input, dtype=torch.float32)
-            input = input.cuda(non_blocking=True)
+            input = input.to(cfg.ENV.DEVICE, non_blocking=True)
 
             output_x, output_y = model(input)
             if cfg.INFERENCE.USE_FLIP_AVG:
@@ -137,8 +137,8 @@ def validate_simcc(cfg: CfgNode,
                                                      val_dataset.flip_pairs, axis="x")
                 output_y_flip_back = flip_back_simcc(output_y_flipped.cpu().numpy(),
                                                      val_dataset.flip_pairs, axis="y")
-                output_x_flip_back_pth = torch.from_numpy(output_x_flip_back.copy()).cuda()
-                output_y_flip_back_pth = torch.from_numpy(output_y_flip_back.copy()).cuda()
+                output_x_flip_back_pth = torch.from_numpy(output_x_flip_back.copy()).to(cfg.ENV.DEVICE)
+                output_y_flip_back_pth = torch.from_numpy(output_y_flip_back.copy()).to(cfg.ENV.DEVICE)
 
                 # feature is not aligned, shift flipped heatmap for higher accuracy
                 if cfg.INFERENCE.SHIFT_HEATMAP_DURING_FLIP_AVG:
@@ -149,9 +149,9 @@ def validate_simcc(cfg: CfgNode,
                 output_x = F.softmax(output_x, dim=2)  # (b, k, logits)
                 output_y = F.softmax(output_y, dim=2)
 
-            target_x = target_x.cuda(non_blocking=True)
-            target_y = target_y.cuda(non_blocking=True)
-            target_weight = target_weight.cuda(non_blocking=True).float()
+            target_x = target_x.to(cfg.ENV.DEVICE, non_blocking=True)
+            target_y = target_y.to(cfg.ENV.DEVICE, non_blocking=True)
+            target_weight = target_weight.to(cfg.ENV.DEVICE, non_blocking=True).float()
 
             loss = criterion(output_x, output_y, target_x, target_y, target_weight)
 
