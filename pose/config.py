@@ -65,6 +65,11 @@ _C.ENV.DEVICE = "cuda:0"
 _C.ENV.RANDOM_SEED = 42
 
 
+"""General Settings"""
+_C.GENERAL = CN()
+_C.GENERAL.RESULT_DIR = None  # The value for this property is generatated automatically.
+
+
 """Inference"""
 _C.INFERENCE = CN()
 _C.INFERENCE.USE_FLIP_AVG = True
@@ -95,13 +100,15 @@ _C.MODEL.EXTRA.FINAL_CONV_KERNEL_SIZE = 1
 
 """Training"""
 _C.TRAIN = CN()
+_C.TRAIN.AUTO_RESUME = False
+_C.TRAIN.END_EPOCH = 140
+_C.TRAIN.LOGGING_EPOCH_PERF = False
+_C.TRAIN.LOGGING_FREQ = 100
 _C.TRAIN.LR = 0.001
 _C.TRAIN.LR_FACTOR = 0.1
 _C.TRAIN.LR_STEP = [90, 120]
-_C.TRAIN.END_EPOCH = 140
-_C.TRAIN.LOGGING_FREQ = 100
-_C.TRAIN.SAVE_CHECKPOINTS = False
-_C.TRAIN.LOGGING_EPOCH_PERF = False
+_C.TRAIN.SAVE_BEST_MODEL = True
+_C.TRAIN.SAVE_CHECKPOINTS = True
 
 
 """Validation"""

@@ -70,9 +70,16 @@ def dump_parameters(model: nn.Module, path: str) -> None:
         pickle.dump(params, fout, pickle.HIGHEST_PROTOCOL)
 
 
-def train(config_fname: str, mode: str) -> None:
+def run(config_fname: str, mode: str) -> None:
     cfg = get_cfg_defaults()
     cfg.merge_from_file(config_fname)
+    if cfg.TRAIN.AUTO_RESUME:
+        raise NotImplementedError("The 'auto resume' feature is not yet implemented.")
+    else:
+        result_dir = "result/" + "__".join([datetime.datetime.now().strftime("%Y%m%d_%H%M%S"),
+                                            config_fname.split("/")[-1].rsplit(".")[0]])
+        cfg.GENERAL.RESULT_DIR = result_dir
+        logger.info(f"Result files will be saved in: {result_dir}/")
     cfg.freeze()
     logger.info(f"Configurations:\n{cfg}")
 
@@ -135,15 +142,21 @@ def train(config_fname: str, mode: str) -> None:
 
         logging_performance = cfg.TRAIN.LOGGING_EPOCH_PERF
         if logging_performance:
-            logging_fname = f"perf_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.log"
-            logger.info(f"performance logging file name: {logging_fname}")
-            with open(logging_fname, 'w') as fout:
+            logging_fpath = os.path.join(cfg.GENERAL.RESULT_DIR, "performance_table.md")
+            logger.info(f"performance logging file path: {logging_fpath}")
+            with open(logging_fpath, 'w') as fout:
                 fout.write("| ep | AP | AP.5 | AP.75 | AR | Train | Val |\n")
                 fout.write("| --- | --- | --- | --- | --- | --- | --- |\n")
 
+        if cfg.TRAIN.SAVE_BEST_MODEL:
+            best_model_dir = os.path.join(cfg.GENERAL.RESULT_DIR, "best_model")
+            pathlib.Path(best_model_dir).mkdir(parents=True, exist_ok=True)
+            logger.info(f"Best model file will be saved in: {best_model_dir}/")
+
         if cfg.TRAIN.SAVE_CHECKPOINTS:
-            checkpoint_dir = "checkpoints"
+            checkpoint_dir = os.path.join(cfg.GENERAL.RESULT_DIR, "checkpoints")
             pathlib.Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
+            logger.info(f"Check point files will be saved in: {checkpoint_dir}/")
 
         begin_epoch = 0
         best_ap = -1.0
@@ -175,7 +188,7 @@ def train(config_fname: str, mode: str) -> None:
                                                   )
 
             if logging_performance:
-                with open(logging_fname, 'a') as fout:
+                with open(logging_fpath, 'a') as fout:
                     _vals = [f"{epoch}"]
                     for _m in ['AP', 'AP .5', 'AP .75', 'AR']:
                         _vals.append(f"{eval_stats[_m]:.4f}")
@@ -186,6 +199,10 @@ def train(config_fname: str, mode: str) -> None:
             if eval_stats['AP'] > best_ap:
                 best_ap = eval_stats['AP']
                 logger.info(f"Best AP is updated! {eval_stats['AP']:.4f}")
+                if cfg.TRAIN.SAVE_BEST_MODEL:
+                    best_model_fpath = os.path.join(best_model_dir, "best_model.pth")
+                    torch.save(model.state_dict(), best_model_fpath)
+                    logger.info(f"Save the best model in: {best_model_fpath}")
 
             if cfg.TRAIN.SAVE_CHECKPOINTS:
                 checkpoint_fpath = os.path.join(checkpoint_dir, f"checkpoint_{epoch}.pth")
@@ -197,7 +214,7 @@ def train(config_fname: str, mode: str) -> None:
                     'avg_precision': eval_stats['AP'],
                     'best_avg_precision': best_ap,
                 }, checkpoint_fpath)
-                logger.info(f"Save checkpoint parameters at: {checkpoint_fpath}")
+                logger.info(f"Save checkpoint parameters in: {checkpoint_fpath}")
 
             logger.info(f"Epoch[{epoch}] complete. Elapsed at {(time.time() - start_ts)/60:.2f} mins")
 
@@ -230,4 +247,4 @@ if __name__ == '__main__':
     mode = sys.argv[1]
     config_fname = sys.argv[2]
     assert mode in ["train", "test"]
-    train(config_fname, mode)
+    run(config_fname, mode)

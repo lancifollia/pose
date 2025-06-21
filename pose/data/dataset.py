@@ -52,6 +52,10 @@ class CocoDataset(Dataset):
 
         self.transform = transform
 
+        self.prediction_dump_dir = os.path.join(cfg.GENERAL.RESULT_DIR, "pred_dump")
+        Path(self.prediction_dump_dir).mkdir(parents=True, exist_ok=True)
+        logger.info(f"Predictoin file will be saved in: {self.prediction_dump_dir}/")
+
         data_aug_cfg = data_cfg.DATA_AUG
         if data_aug_cfg is None:
             self.do_data_augment = False
@@ -345,9 +349,7 @@ class CocoDataset(Dataset):
                      }
                 pred_dump.append(v)
 
-        dump_dir = ".pred_dumps"
-        Path(dump_dir).mkdir(parents=True, exist_ok=True)
-        pred_dump_fpath = f"{dump_dir}/pred_dump_epoch{epoch}"
+        pred_dump_fpath = f"{self.prediction_dump_dir}/pred_dump_epoch{epoch}"
         with open(pred_dump_fpath, 'wb') as fout:
             fout.write(json.dumps(pred_dump))
         logger.info(f"Dumps validation data prediction results: {pred_dump_fpath}")

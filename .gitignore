@@ -3,5 +3,5 @@
 .pred_dumps/
 checkpoints/
 debug/
-results/
+result/
 *__pycache__*
