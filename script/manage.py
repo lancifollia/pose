@@ -76,8 +76,8 @@ def run(config_fname: str, mode: str) -> None:
     if cfg.TRAIN.AUTO_RESUME:
         raise NotImplementedError("The 'auto resume' feature is not yet implemented.")
     else:
-        result_dir = "__".join([datetime.datetime.now().strftime("%Y%m%d_%H%M%S"),
-                                config_fname.rsplit(".")[0]])
+        result_dir = "result/" + "__".join([datetime.datetime.now().strftime("%Y%m%d_%H%M%S"),
+                                            config_fname.split("/")[-1].rsplit(".")[0]])
         cfg.GENERAL.RESULT_DIR = result_dir
         logger.info(f"Result files will be saved in: {result_dir}/")
     cfg.freeze()
@@ -201,7 +201,7 @@ def run(config_fname: str, mode: str) -> None:
                 logger.info(f"Best AP is updated! {eval_stats['AP']:.4f}")
                 if cfg.TRAIN.SAVE_BEST_MODEL:
                     best_model_fpath = os.path.join(best_model_dir, "best_model.pth")
-                    torch.save(model.module.state_dict(), best_model_fpath)
+                    torch.save(model.state_dict(), best_model_fpath)
                     logger.info(f"Save the best model in: {best_model_fpath}")
 
             if cfg.TRAIN.SAVE_CHECKPOINTS:
