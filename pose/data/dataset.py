@@ -4,6 +4,7 @@ Dataset modules
 
 import copy
 import os
+import random
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -213,7 +214,7 @@ class CocoDataset(Dataset):
             raise ValueError(f"Fail to read {image_path}")
 
         bbox_center = sample.bbox_center
-        bbox_scale = sample.bbox_scale
+        bbox_scale = sample.bbox_scale * scale
         bbox_score = sample.bbox_score
         keypoints = sample.keypoints
 
@@ -259,9 +260,9 @@ class CocoDataset(Dataset):
         scale = 1.0
 
         if self.do_data_augment:
-            if np.random.random() <= self.flip_proba:
+            if random.random() <= self.flip_proba:
                 hflip = True
-            if np.random.random() <= self.rotate_proba:
+            if random.random() <= self.rotate_proba:
                 rotate = np.clip(np.random.randn() * self.rotate_factor,
                                  self.rotate_factor * -2, self.rotate_factor * 2)
             scale = np.clip(np.random.randn() * self.scale_factor + 1,
