@@ -9,7 +9,7 @@ RUN apt-get install -y wget build-essential libssl-dev openssl libtool
 
 RUN pip3 install --upgrade pip setuptools
 RUN pip3 install --no-cache-dir \
-    torch==2.6.0 torchvision==0.21.0 \
+    torch==2.5.1 torchvision==0.20.1 \
     --index-url https://download.pytorch.org/whl/cu124
 RUN pip3 install --no-cache-dir matplotlib
 RUN pip3 install --no-cache-dir jupyterlab
